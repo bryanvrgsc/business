@@ -135,6 +135,49 @@ export async function updateTicketStatus(id: string, status: string): Promise<vo
     });
 }
 
+
+// Admin - Forklifts
+export async function createForklift(data: any): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    await fetch(`${API_URL}/api/forklifts`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+    });
+}
+
+// Admin - Users
+export async function fetchUsers(): Promise<User[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const res = await fetch(`${API_URL}/api/users`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch users');
+    return res.json();
+}
+
+export async function createUser(data: any): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    await fetch(`${API_URL}/api/users`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+    });
+}
+
 export function logout() {
     if (typeof window !== 'undefined') {
         localStorage.removeItem('token');

@@ -253,9 +253,9 @@ flowchart TD
 ```
 
 **Criterios de aceptación:**
-- [ ] Los preventivos generan tickets automáticamente al vencerse
-- [ ] Un admin puede ver el calendario de mantenimientos próximos
-- [ ] Al cerrar un preventivo, el sistema programa el siguiente automáticamente
+- [x] Los preventivos generan tickets automáticamente al vencerse (Cron)
+- [x] Un admin puede ver el calendario de mantenimientos próximos (Dashboard)
+- [x] Al cerrar un preventivo, el sistema programa el siguiente automáticamente (Cron Handler)
 
 ---
 

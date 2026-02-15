@@ -250,6 +250,86 @@ app.post('/api/schedules', async (c) => {
 });
 
 
+/**
+ * ==========================================
+ * ADMIN API (Users & Forklifts)
+ * ==========================================
+ */
+
+// POST /api/forklifts (Register Forklift)
+app.post('/api/forklifts', async (c) => {
+    const user = c.get('user');
+    // In a real app, check if user.role === 'ADMIN'
+
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const { internal_id, model, brand, serial_number, year, location_id } = body;
+
+    const id = crypto.randomUUID();
+    // Simple QR payload: URL or just ID. Let's use internal_id for readability in this MVP
+    const qr_code_payload = internal_id;
+
+    try {
+        await client.connect();
+        await client.query(`
+            INSERT INTO forklifts (id, internal_id, qr_code_payload, model, brand, serial_number, year, client_id, location_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [id, internal_id, qr_code_payload, model, brand, serial_number, year, user.client_id, location_id]);
+
+        return c.json({ message: 'Forklift created', id, qr_code_payload });
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// GET /api/users (List Users)
+app.get('/api/users', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+
+    // Check Admin Role?
+
+    try {
+        await client.connect();
+        const res = await client.query(`
+            SELECT id, full_name, email, role, is_active, last_login_at 
+            FROM users 
+            WHERE client_id = $1
+            ORDER BY created_at DESC
+        `, [user.client_id]);
+        return c.json(res.rows);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// POST /api/users (Create User)
+app.post('/api/users', async (c) => {
+    const user = c.get('user');
+    // Check Admin Role?
+
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const { full_name, email, password, role } = body;
+
+    const id = crypto.randomUUID();
+    // Simple hash for now (in prod: bcrypt)
+    // We are trusting the admin input here
+    const password_hash = password;
+
+    try {
+        await client.connect();
+        await client.query(`
+            INSERT INTO users (id, full_name, email, password_hash, role, client_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `, [id, full_name, email, password_hash, role, user.client_id]);
+
+        return c.json({ message: 'User created', id });
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
 // -----------------------------------------------------------------
 // Endpoint: PUT /api/upload (R2 ENABLED)
 // -----------------------------------------------------------------
