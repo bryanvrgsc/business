@@ -136,6 +136,46 @@ export async function updateTicketStatus(id: string, status: string): Promise<vo
 }
 
 
+
+// Preventive Maintenance
+export interface MaintenanceSchedule {
+    id: string;
+    forklift_id: string;
+    description: string;
+    due_date?: string;
+    interval_days?: number;
+    recurrence?: string;
+    created_at: string;
+}
+
+export async function fetchSchedules(): Promise<MaintenanceSchedule[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const res = await fetch(`${API_URL}/api/maintenance/schedules`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch schedules');
+    return res.json();
+}
+
+export async function createSchedule(data: any): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    await fetch(`${API_URL}/api/maintenance/schedules`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+    });
+}
+
 // Admin - Forklifts
 export async function createForklift(data: any): Promise<void> {
     const token = getToken();
