@@ -135,7 +135,6 @@ export default function DashboardPage() {
                         </div>
                     </Link>
                 </motion.div>
-                </motion.div>
                 <motion.div variants={itemVariants}>
                     <Link href="/reports" className="premium-card p-6 flex flex-col items-center justify-center gap-4 group interactive text-center h-full">
                         <div className="bg-indigo-50 text-indigo-600 p-4 rounded-2xl group-hover:scale-110 transition-transform duration-300">
@@ -163,10 +162,10 @@ export default function DashboardPage() {
                         </div>
                     </Link>
                 </motion.div>
-            </div >
+            </div>
 
-        {/* Activity Feed */ }
-        < div className = "px-2" >
+            {/* Activity Feed */}
+            <div className="px-2">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-black text-slate-900 tracking-tight">Actividad Reciente</h3>
                     <Link href="/reports" className="text-primary text-xs font-bold hover:underline flex items-center gap-1">
@@ -207,8 +206,8 @@ export default function DashboardPage() {
                         </div>
                     )}
                 </div>
-            </div >
-        </motion.div >
+            </div>
+        </motion.div>
     );
 }
 
