@@ -4,10 +4,10 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchTemplate, ChecklistTemplate } from '@/lib/templates';
 import { fetchForkliftById, Forklift } from '@/lib/api';
-import { Camera, Save, AlertTriangle, ArrowLeft } from 'lucide-react';
-import { db } from '@/lib/db'; // Dexie DB
-
+import { Camera, Save, AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { db } from '@/lib/db';
 import { uploadImage } from '@/lib/api';
+import { motion, AnimatePresence } from 'framer-motion';
 
 function ChecklistFormContent() {
     const router = useRouter();
@@ -24,13 +24,18 @@ function ChecklistFormContent() {
     useEffect(() => {
         async function loadData() {
             if (!forkliftId) return;
-            const [fData, tData] = await Promise.all([
-                fetchForkliftById(forkliftId),
-                fetchTemplate('basic-forklift')
-            ]);
-            setForklift(fData);
-            setTemplate(tData);
-            setLoading(false);
+            try {
+                const [fData, tData] = await Promise.all([
+                    fetchForkliftById(forkliftId),
+                    fetchTemplate('basic-forklift')
+                ]);
+                setForklift(fData);
+                setTemplate(tData);
+            } catch (err) {
+                console.error('Error loading data', err);
+            } finally {
+                setLoading(false);
+            }
         }
         loadData();
     }, [forkliftId]);
@@ -44,10 +49,6 @@ function ChecklistFormContent() {
 
         setUploadingState(prev => ({ ...prev, [questionId]: true }));
         try {
-            // In offline mode, we might want to store the Blob in Dexie and sync later.
-            // For now, let's try to upload immediately if online, or fail.
-            // TODO: Handle offline image storage (store Blob in IndexedDB)
-
             const imageUrl = await uploadImage(file);
             handleAnswerChange(questionId, imageUrl);
         } catch (error) {
@@ -62,7 +63,7 @@ function ChecklistFormContent() {
         if (!template) return false;
         return template.questions.some(q =>
             q.severity === 'CRITICAL_STOP' &&
-            answers[q.id] === 'NO' // Assuming YES = Good, NO = Bad/Fail
+            answers[q.id] === 'NO'
         );
     };
 
@@ -70,26 +71,32 @@ function ChecklistFormContent() {
         e.preventDefault();
         if (!forklift || !template) return;
 
+        // Check if all YES_NO questions are answered
+        const allAnswered = template.questions.every(q => q.type !== 'YES_NO' || answers[q.id]);
+        if (!allAnswered) {
+            alert('Por favor responde todas las preguntas del checklist.');
+            return;
+        }
+
         setSaving(true);
         const hasCritical = calculateCriticalFailure();
 
-        // Save to local DB (Dexie)
         try {
             await db.reports.add({
                 forkliftId: forklift.id,
                 templateId: template.id,
                 answers,
-                evidence: [], // TODO: Extract evidence from answers if needed separately
+                evidence: [],
                 capturedAt: new Date().toISOString(),
                 hasCriticalFailure: hasCritical
             });
 
-            // Trigger background sync (simulated for now)
             if ('serviceWorker' in navigator && 'SyncManager' in window) {
-                // @ts-ignore
                 const registration = await navigator.serviceWorker.ready;
-                // @ts-ignore
-                try { await registration.sync.register('sync-reports'); } catch { }
+                try {
+                    // @ts-ignore
+                    await registration.sync.register('sync-reports');
+                } catch { }
             }
 
             router.push(`/dashboard?success=true&critical=${hasCritical}`);
@@ -101,52 +108,80 @@ function ChecklistFormContent() {
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-gray-500">Cargando checklist...</div>;
-    if (!forklift || !template) return <div className="p-8 text-center text-red-500">Error al cargar datos.</div>;
+    if (loading) return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+            <div className="text-center">
+                <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-slate-500 font-bold">Cargando inspección...</p>
+            </div>
+        </div>
+    );
+
+    if (!forklift || !template) return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center">
+            <div className="premium-card p-8">
+                <AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
+                <h2 className="text-xl font-black text-slate-900 mb-2">Error de conexión</h2>
+                <p className="text-slate-500 mb-6 font-medium">No pudimos cargar la información del montacargas.</p>
+                <button onClick={() => router.back()} className="w-full py-3 bg-slate-100 text-slate-600 font-bold rounded-xl">Volver</button>
+            </div>
+        </div>
+    );
 
     return (
-        <div className="max-w-md mx-auto pb-20 p-4">
-            <div className="flex items-center mb-6">
-                <button onClick={() => router.back()} className="mr-3 p-2 hover:bg-gray-100 rounded-full">
-                    <ArrowLeft size={24} className="text-gray-600" />
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-xl mx-auto pb-24 px-4 pt-6"
+        >
+            <div className="flex items-center mb-8">
+                <button onClick={() => router.back()} className="mr-4 p-2.5 bg-white shadow-sm border border-slate-100 rounded-2xl interactive text-slate-600">
+                    <ArrowLeft size={20} />
                 </button>
                 <div>
-                    <h1 className="text-xl font-bold">Nueva Inspección</h1>
-                    <p className="text-sm text-gray-500">{forklift.internalId} — {forklift.model}</p>
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">Inspección</h1>
+                    <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">{forklift.internalId} • {forklift.model}</p>
                 </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-                {template.questions.map((q) => (
-                    <div key={q.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-start mb-2">
-                            <label className="font-medium text-gray-800 text-sm md:text-base">{q.text}</label>
+                {template.questions.map((q, idx) => (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                        key={q.id}
+                        className="premium-card p-6"
+                    >
+                        <div className="flex justify-between items-start mb-4">
+                            <label className="font-bold text-slate-800 text-base leading-tight pr-4">{q.text}</label>
                             {q.severity === 'CRITICAL_STOP' && (
-                                <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded font-bold">CRÍTICO</span>
+                                <span className="bg-red-50 text-red-600 text-[10px] px-2 py-1 rounded-lg font-black tracking-widest uppercase border border-red-100 shrink-0">CRÍTICO</span>
                             )}
                         </div>
 
-                        {/* Input Types */}
                         {q.type === 'YES_NO' && (
-                            <div className="flex gap-2 mt-2">
+                            <div className="flex gap-3 mt-4">
                                 <button
                                     type="button"
                                     onClick={() => handleAnswerChange(q.id, 'YES')}
-                                    className={`flex-1 py-3 rounded-lg font-medium border ${answers[q.id] === 'YES'
-                                        ? 'bg-green-100 border-green-500 text-green-800 ring-1 ring-green-500'
-                                        : 'bg-gray-50 border-gray-200 text-gray-500'
+                                    className={`flex-1 py-4 rounded-2xl font-black text-sm transition-all interactive flex items-center justify-center gap-2 border-2 ${answers[q.id] === 'YES'
+                                        ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-100'
+                                        : 'bg-slate-50 border-slate-50 text-slate-400'
                                         }`}
                                 >
+                                    {answers[q.id] === 'YES' && <CheckCircle2 size={18} />}
                                     BIEN
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => handleAnswerChange(q.id, 'NO')}
-                                    className={`flex-1 py-3 rounded-lg font-medium border ${answers[q.id] === 'NO'
-                                        ? 'bg-red-100 border-red-500 text-red-800 ring-1 ring-red-500'
-                                        : 'bg-gray-50 border-gray-200 text-gray-500'
+                                    className={`flex-1 py-4 rounded-2xl font-black text-sm transition-all interactive flex items-center justify-center gap-2 border-2 ${answers[q.id] === 'NO'
+                                        ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-100'
+                                        : 'bg-slate-50 border-slate-50 text-slate-400'
                                         }`}
                                 >
+                                    {answers[q.id] === 'NO' && <AlertTriangle size={18} />}
                                     MAL
                                 </button>
                             </div>
@@ -154,9 +189,9 @@ function ChecklistFormContent() {
 
                         {q.type === 'TEXT' && (
                             <textarea
-                                className="w-full mt-2 p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                rows={2}
-                                placeholder="Observaciones..."
+                                className="w-full mt-4 p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-sm font-medium focus:bg-white focus:border-primary/20 focus:ring-4 focus:ring-primary/5 outline-none transition-all placeholder:text-slate-300"
+                                rows={3}
+                                placeholder="Escribe aquí tus observaciones..."
                                 onChange={(e) => handleAnswerChange(q.id, e.target.value)}
                             />
                         )}
@@ -164,14 +199,14 @@ function ChecklistFormContent() {
                         {q.type === 'NUMBER' && (
                             <input
                                 type="number"
-                                className="w-full mt-2 p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full mt-4 p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-sm font-black focus:bg-white focus:border-primary/20 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
                                 placeholder="0"
                                 onChange={(e) => handleAnswerChange(q.id, e.target.value)}
                             />
                         )}
 
                         {(q.requiresEvidence || q.type === 'PHOTO') && (
-                            <div className="mt-3">
+                            <div className="mt-4">
                                 <input
                                     type="file"
                                     accept="image/*"
@@ -185,57 +220,77 @@ function ChecklistFormContent() {
                                     }}
                                 />
 
-                                {answers[q.id] && typeof answers[q.id] === 'string' && answers[q.id].startsWith('http') ? (
-                                    <div className="relative mt-2">
-                                        <img src={answers[q.id]} alt="Evidencia" className="w-full h-40 object-cover rounded-lg" />
-                                        <button
-                                            type="button"
-                                            onClick={() => handleAnswerChange(q.id, null)}
-                                            className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full shadow-md"
+                                <AnimatePresence mode="wait">
+                                    {answers[q.id] && typeof answers[q.id] === 'string' && answers[q.id].startsWith('http') ? (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            className="relative mt-2 group"
                                         >
-                                            <AlertTriangle size={14} />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <label
-                                        htmlFor={`file-${q.id}`}
-                                        className={`flex items-center gap-2 text-xs font-medium px-3 py-2 rounded transition-colors w-full justify-center border border-dashed cursor-pointer ${uploadingState[q.id]
-                                                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                                                : 'text-blue-600 hover:bg-blue-50 border-blue-200'
-                                            }`}
-                                    >
-                                        <Camera size={16} />
-                                        {uploadingState[q.id] ? 'Subiendo...' : 'Agregar Foto / Evidencia'}
-                                    </label>
-                                )}
+                                            <img src={answers[q.id]} alt="Evidencia" className="w-full h-48 object-cover rounded-2xl shadow-inner border border-slate-100" />
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAnswerChange(q.id, null)}
+                                                className="absolute top-3 right-3 bg-red-500 text-white p-2 rounded-xl shadow-lg interactive"
+                                            >
+                                                <AlertTriangle size={18} />
+                                            </button>
+                                        </motion.div>
+                                    ) : (
+                                        <label
+                                            htmlFor={`file-${q.id}`}
+                                            className={`flex items-center gap-3 text-sm font-black px-4 py-4 rounded-2xl transition-all w-full justify-center border-2 border-dashed interactive cursor-pointer ${uploadingState[q.id]
+                                                ? 'bg-slate-50 text-slate-300 border-slate-100'
+                                                : 'bg-blue-50/50 text-primary border-blue-100 hover:bg-blue-50'
+                                                }`}
+                                        >
+                                            <Camera size={20} />
+                                            {uploadingState[q.id] ? 'Subiendo...' : 'Agregar Evidencia'}
+                                        </label>
+                                    )}
+                                </AnimatePresence>
                             </div>
                         )}
-                    </div>
+                    </motion.div>
                 ))}
 
-                <div className="pt-4">
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="pt-6"
+                >
                     <button
                         type="submit"
                         disabled={saving}
-                        className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+                        className="w-full bg-slate-900 text-white font-black py-5 rounded-3xl shadow-xl shadow-slate-200 hover:bg-black active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                     >
-                        {saving ? 'Guardando...' : (
+                        {saving ? (
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
                             <>
-                                <Save size={20} />
-                                Guardar Inspección
+                                <Save size={22} />
+                                Finalizar Inspección
                             </>
                         )}
                     </button>
-                </div>
+                    <p className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-4">
+                        Los datos se guardarán localmente si no hay conexión
+                    </p>
+                </motion.div>
             </form>
-        </div>
+        </motion.div>
     );
 }
 
-
 export default function ChecklistPage() {
     return (
-        <Suspense fallback={<div className="p-8 text-center text-gray-500">Cargando...</div>}>
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                <div className="w-10 h-10 border-4 border-slate-200 border-t-primary rounded-full animate-spin"></div>
+            </div>
+        }>
             <ChecklistFormContent />
         </Suspense>
     )

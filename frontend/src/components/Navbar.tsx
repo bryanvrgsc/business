@@ -13,31 +13,33 @@ export default function Navbar() {
     };
 
     return (
-        <nav className="fixed bottom-0 w-full bg-white border-t border-gray-200 md:relative md:border-t-0 md:h-screen md:w-64 md:flex-col md:border-r">
-            <div className="flex justify-around items-center h-16 md:flex-col md:justify-start md:h-full md:items-start md:p-4 md:space-y-4">
-                <div className="hidden md:block text-xl font-bold mb-4 text-blue-600">CMMS App</div>
+        <nav className="fixed bottom-0 w-full glass z-50 md:relative md:h-screen md:w-64 md:flex-col md:border-r md:border-slate-200">
+            <div className="flex justify-around items-center h-16 md:flex-col md:justify-start md:h-full md:items-start md:p-6 md:space-y-6">
+                <div className="hidden md:block text-2xl font-black mb-8 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    CMMS
+                </div>
 
-                <Link href="/dashboard" className="flex flex-col items-center md:flex-row md:space-x-3 text-gray-600 hover:text-blue-600">
-                    <Home size={24} />
-                    <span className="text-xs md:text-base">Home</span>
+                <Link href="/dashboard" className="flex flex-col items-center md:flex-row md:space-x-4 text-slate-500 hover:text-blue-600 transition-colors interactive">
+                    <Home size={22} />
+                    <span className="text-[10px] font-medium md:text-base">Inicio</span>
                 </Link>
 
-                <Link href="/scan" className="flex flex-col items-center md:flex-row md:space-x-3 text-gray-600 hover:text-blue-600">
-                    <div className="bg-blue-600 text-white p-2 rounded-full -mt-8 border-4 border-white md:mt-0 md:bg-transparent md:text-gray-600 md:p-0 md:border-0 md:hover:text-blue-600">
+                <Link href="/scan" className="relative flex flex-col items-center md:flex-row md:space-x-4 text-slate-500 hover:text-blue-600 transition-colors interactive">
+                    <div className="bg-primary text-white p-3 rounded-2xl -mt-10 shadow-lg shadow-blue-200 border-4 border-background md:mt-0 md:bg-transparent md:text-slate-500 md:p-0 md:border-0 md:shadow-none md:hover:text-blue-600">
                         <QrCode size={24} />
                     </div>
-                    <span className="text-xs md:text-base md:hidden">Scan</span>
-                    <span className="hidden md:inline">Scan QR</span>
+                    <span className="text-[10px] font-medium md:text-base md:hidden mt-1">Scanner</span>
+                    <span className="hidden md:inline">Scanner QR</span>
                 </Link>
 
-                <Link href="/settings" className="flex flex-col items-center md:flex-row md:space-x-3 text-gray-600 hover:text-blue-600">
-                    <Settings size={24} />
-                    <span className="text-xs md:text-base">Settings</span>
+                <Link href="/settings" className="flex flex-col items-center md:flex-row md:space-x-4 text-slate-500 hover:text-blue-600 transition-colors interactive">
+                    <Settings size={22} />
+                    <span className="text-[10px] font-medium md:text-base">Ajustes</span>
                 </Link>
 
-                <button onClick={handleLogout} className="flex flex-col items-center md:flex-row md:space-x-3 text-gray-600 hover:text-red-600 mt-auto">
-                    <LogOut size={24} />
-                    <span className="text-xs md:text-base">Logout</span>
+                <button onClick={handleLogout} className="flex flex-col items-center md:flex-row md:space-x-4 text-slate-400 hover:text-red-500 mt-auto transition-colors interactive">
+                    <LogOut size={22} />
+                    <span className="text-[10px] font-medium md:text-base">Salir</span>
                 </button>
             </div>
         </nav>
