@@ -25,35 +25,37 @@ export default function Navbar() {
     ];
 
     return (
-        <nav className="fixed bottom-0 w-full glass z-50 pb-safe md:relative md:h-screen md:w-64 md:flex-col md:border-r md:border-slate-200">
-            <div className="flex justify-around items-end h-16 px-4 md:flex-col md:justify-start md:h-full md:items-start md:p-6 md:space-y-6">
+        <nav className="fixed bottom-0 left-0 w-full bg-white/80 backdrop-blur-md border-t border-slate-200 z-50 pb-safe md:fixed md:top-0 md:left-0 md:h-screen md:w-64 md:border-r md:border-t-0 md:flex md:flex-col">
+            <div className="flex justify-around items-center h-16 w-full px-2 md:flex-col md:justify-start md:items-start md:h-full md:p-6 md:space-y-6">
                 <div className="hidden md:block text-2xl font-black mb-8 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                     CMMS
                 </div>
 
-                {navItems.map((item) => (
-                    <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`flex flex-col items-center md:flex-row md:space-x-4 transition-all interactive ${item.hideOnMobile ? 'hidden md:flex' : 'flex'} ${item.active ? 'text-primary' : 'text-slate-500 hover:text-blue-600'}`}
-                    >
-                        {item.floating ? (
-                            <div className="bg-primary text-white p-4 rounded-full -mb-8 shadow-xl shadow-blue-200 border-4 border-background md:mb-0 md:bg-transparent md:text-inherit md:p-0 md:border-0 md:shadow-none translate-y-[-20%] md:translate-y-0">
-                                <item.icon size={26} />
-                            </div>
-                        ) : (
-                            <item.icon size={22} className={item.active ? 'scale-110' : ''} />
-                        )}
-                        <span className={`text-[10px] font-black uppercase tracking-tighter mt-1 md:mt-0 md:text-base md:normal-case md:tracking-normal ${item.floating ? 'md:inline' : ''} ${item.active ? 'opacity-100' : 'opacity-60'}`}>
-                            {item.label}
-                        </span>
-                    </Link>
-                ))}
+                <div className="flex w-full justify-around items-center md:flex-col md:justify-start md:items-start md:space-y-4 md:w-auto">
+                    {navItems.map((item) => (
+                        <Link
+                            key={item.href}
+                            href={item.href}
+                            className={`flex flex-col items-center justify-center w-full md:w-auto md:flex-row md:justify-start md:space-x-3 p-1 rounded-xl transition-all interactive ${item.hideOnMobile ? 'hidden md:flex' : 'flex'} ${item.active ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            {item.floating ? (
+                                <div className="bg-blue-600 text-white p-3.5 rounded-full -mt-12 shadow-lg shadow-blue-200 border-4 border-white md:mt-0 md:p-0 md:bg-transparent md:text-inherit md:shadow-none md:border-0">
+                                    <item.icon size={24} />
+                                </div>
+                            ) : (
+                                <item.icon size={24} className={item.active ? 'scale-110 transition-transform' : ''} />
+                            )}
+                            <span className={`text-[10px] font-bold mt-1 md:mt-0 md:text-sm ${item.active ? 'opacity-100' : 'opacity-70'} ${item.floating ? 'md:inline' : ''}`}>
+                                {item.label}
+                            </span>
+                        </Link>
+                    ))}
 
-                <button onClick={handleLogout} className="flex flex-col items-center md:flex-row md:space-x-4 text-slate-400 hover:text-red-500 mt-auto transition-colors interactive mb-2 md:mb-0">
-                    <LogOut size={22} />
-                    <span className="text-[10px] font-black uppercase tracking-tighter mt-1 md:mt-0 md:text-base md:normal-case md:tracking-normal opacity-60">Salir</span>
-                </button>
+                    <button onClick={handleLogout} className="flex flex-col items-center justify-center w-full md:w-auto md:flex-row md:justify-start md:space-x-3 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all interactive md:mt-auto">
+                        <LogOut size={24} />
+                        <span className="text-[10px] font-bold mt-1 md:mt-0 md:text-sm">Salir</span>
+                    </button>
+                </div>
             </div>
         </nav>
     );
