@@ -252,6 +252,94 @@ app.post('/api/schedules', async (c) => {
 
 /**
  * ==========================================
+ * KPIs & ANALYTICS API
+ * ==========================================
+ */
+
+// GET /api/kpis
+app.get('/api/kpis', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+
+    try {
+        await client.connect();
+
+        // 1. Ticket counts by status
+        const ticketsByStatus = await client.query(`
+            SELECT status, COUNT(*)::int as count
+            FROM maintenance_tickets mt
+            JOIN forklifts f ON mt.forklift_id = f.id
+            WHERE f.client_id = $1
+            GROUP BY status
+        `, [user.client_id]);
+
+        // 2. MTTR (Mean Time To Repair) - avg hours between created_at and resolved_at
+        const mttrResult = await client.query(`
+            SELECT 
+                COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600), 0)::float as mttr_hours
+            FROM maintenance_tickets mt
+            JOIN forklifts f ON mt.forklift_id = f.id
+            WHERE f.client_id = $1 AND mt.resolved_at IS NOT NULL
+        `, [user.client_id]);
+
+        // 3. Total costs
+        const costsResult = await client.query(`
+            SELECT 
+                COALESCE(SUM(tc.total_cost), 0)::float as total_costs,
+                COUNT(DISTINCT tc.ticket_id)::int as tickets_with_costs
+            FROM ticket_costs tc
+            JOIN maintenance_tickets mt ON tc.ticket_id = mt.id
+            JOIN forklifts f ON mt.forklift_id = f.id
+            WHERE f.client_id = $1
+        `, [user.client_id]);
+
+        // 4. Tickets per month (last 6 months)
+        const ticketsPerMonth = await client.query(`
+            SELECT 
+                TO_CHAR(mt.created_at, 'YYYY-MM') as month,
+                COUNT(*)::int as count
+            FROM maintenance_tickets mt
+            JOIN forklifts f ON mt.forklift_id = f.id
+            WHERE f.client_id = $1 AND mt.created_at >= NOW() - INTERVAL '6 months'
+            GROUP BY TO_CHAR(mt.created_at, 'YYYY-MM')
+            ORDER BY month ASC
+        `, [user.client_id]);
+
+        // 5. Forklift fleet status
+        const fleetStatus = await client.query(`
+            SELECT operational_status, COUNT(*)::int as count
+            FROM forklifts
+            WHERE client_id = $1
+            GROUP BY operational_status
+        `, [user.client_id]);
+
+        const statusMap: Record<string, number> = {};
+        ticketsByStatus.rows.forEach((r: any) => { statusMap[r.status] = r.count; });
+
+        return c.json({
+            tickets: {
+                open: statusMap['OPEN'] || 0,
+                in_progress: statusMap['IN_PROGRESS'] || 0,
+                resolved: statusMap['RESOLVED'] || 0,
+                closed: statusMap['CLOSED'] || 0,
+                total: Object.values(statusMap).reduce((a: number, b: number) => a + b, 0)
+            },
+            mttr_hours: parseFloat(mttrResult.rows[0]?.mttr_hours || 0).toFixed(1),
+            costs: {
+                total: costsResult.rows[0]?.total_costs || 0,
+                tickets_with_costs: costsResult.rows[0]?.tickets_with_costs || 0
+            },
+            tickets_per_month: ticketsPerMonth.rows,
+            fleet: fleetStatus.rows
+        });
+
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+/**
+ * ==========================================
  * INVENTORY & COSTS API
  * ==========================================
  */

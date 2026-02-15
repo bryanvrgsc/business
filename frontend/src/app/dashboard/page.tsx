@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { syncReports } from '@/lib/sync';
-import { RefreshCw, CheckCircle, AlertTriangle, Clock, QrCode, FileText, ChevronRight, Users, Truck, Package } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertTriangle, Clock, QrCode, FileText, ChevronRight, Users, Truck, Package, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 
@@ -208,6 +208,16 @@ export default function DashboardPage() {
                             </div>
                             <div>
                                 <span className="block font-bold text-sm text-slate-900">Inventario</span>
+                            </div>
+                        </Link>
+                    </motion.div>
+                    <motion.div variants={itemVariants}>
+                        <Link href="/analytics" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
+                            <div className="bg-cyan-50 text-cyan-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                <BarChart3 size={24} />
+                            </div>
+                            <div>
+                                <span className="block font-bold text-sm text-slate-900">Analytics</span>
                             </div>
                         </Link>
                     </motion.div>

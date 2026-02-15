@@ -241,6 +241,34 @@ export async function addTicketCost(ticketId: string, data: any): Promise<void> 
     });
 }
 
+// KPIs
+export interface KPIData {
+    tickets: {
+        open: number;
+        in_progress: number;
+        resolved: number;
+        closed: number;
+        total: number;
+    };
+    mttr_hours: string;
+    costs: {
+        total: number;
+        tickets_with_costs: number;
+    };
+    tickets_per_month: { month: string; count: number }[];
+    fleet: { operational_status: string; count: number }[];
+}
+
+export async function fetchKPIs(): Promise<KPIData> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${API_URL}/api/kpis`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch KPIs');
+    return res.json();
+}
+
 export function logout() {
     if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
