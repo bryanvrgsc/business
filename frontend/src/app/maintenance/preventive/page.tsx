@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchSchedules, createSchedule, fetchForkliftById, Schedule, Forklift } from '@/lib/api';
+import { fetchSchedules, createSchedule, fetchForklifts, MaintenanceSchedule as Schedule, Forklift } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Calendar, Plus, Clock, Save, X, Truck } from 'lucide-react';
@@ -11,6 +11,7 @@ function SchedulesListContent() {
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [forklifts, setForklifts] = useState<Forklift[]>([]);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -23,7 +24,17 @@ function SchedulesListContent() {
 
     useEffect(() => {
         loadSchedules();
+        loadForklifts();
     }, []);
+
+    const loadForklifts = async () => {
+        try {
+            const data = await fetchForklifts();
+            setForklifts(data);
+        } catch (err) {
+            console.error('Failed to load forklifts');
+        }
+    };
 
     const loadSchedules = async () => {
         try {
@@ -177,14 +188,17 @@ function SchedulesListContent() {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Montacargas ID (Opcional)</label>
-                                <input
-                                    type="text"
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Montacargas</label>
+                                <select
                                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                    placeholder="Dejar vacío para todos"
                                     value={formData.forklift_id}
                                     onChange={e => setFormData({ ...formData, forklift_id: e.target.value })}
-                                />
+                                >
+                                    <option value="">Aplicar a toda la flota</option>
+                                    {forklifts.map(f => (
+                                        <option key={f.id} value={f.id}>{f.internalId} - {f.model}</option>
+                                    ))}
+                                </select>
                             </div>
 
                             <button

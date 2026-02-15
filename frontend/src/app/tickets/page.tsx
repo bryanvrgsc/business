@@ -1,10 +1,10 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchTickets, updateTicketStatus, Ticket } from '@/lib/api';
+import { fetchTickets, updateTicketStatus, Ticket, fetchForklifts, createTicket, Forklift } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, AlertTriangle, CheckCircle, Clock, MoreVertical, Search, Filter } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle, Clock, MoreVertical, Search, Filter, Plus, X, Save } from 'lucide-react';
 
 function TicketsListContent() {
     const router = useRouter();
@@ -12,9 +12,30 @@ function TicketsListContent() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('ALL');
 
+    const [showModal, setShowModal] = useState(false);
+    const [forklifts, setForklifts] = useState<Forklift[]>([]);
+    const [submitting, setSubmitting] = useState(false);
+
+    // New Ticket Form State
+    const [formData, setFormData] = useState({
+        forklift_id: '',
+        description: '',
+        priority: 'MEDIUM'
+    });
+
     useEffect(() => {
         loadTickets();
+        loadForklifts();
     }, []);
+
+    const loadForklifts = async () => {
+        try {
+            const data = await fetchForklifts();
+            setForklifts(data);
+        } catch (err) {
+            console.error('Failed to load forklifts');
+        }
+    };
 
     const loadTickets = async () => {
         try {
@@ -35,6 +56,26 @@ function TicketsListContent() {
         } catch (err) {
             console.error('Failed to update status', err);
             loadTickets(); // Revert on error
+        }
+    };
+
+    const handleCreateTicket = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSubmitting(true);
+        try {
+            await createTicket(formData);
+            alert('Ticket creado exitosamente');
+            setShowModal(false);
+            setFormData({
+                forklift_id: '',
+                description: '',
+                priority: 'MEDIUM'
+            });
+            loadTickets();
+        } catch (err) {
+            alert('Error al crear ticket');
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -80,6 +121,12 @@ function TicketsListContent() {
                         <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">Mantenimiento Correctivo</p>
                     </div>
                 </div>
+                <button
+                    onClick={() => setShowModal(true)}
+                    className="p-3 bg-red-500 text-white rounded-2xl shadow-lg shadow-red-200 interactive"
+                >
+                    <Plus size={24} />
+                </button>
             </div>
 
             {/* Filter Tabs */}
@@ -89,8 +136,8 @@ function TicketsListContent() {
                         key={f}
                         onClick={() => setFilter(f)}
                         className={`px-4 py-2 rounded-xl text-xs font-black tracking-wider transition-all whitespace-nowrap ${filter === f
-                                ? 'bg-slate-900 text-white shadow-lg shadow-slate-200'
-                                : 'bg-white text-slate-500 border border-slate-100'
+                            ? 'bg-slate-900 text-white shadow-lg shadow-slate-200'
+                            : 'bg-white text-slate-500 border border-slate-100'
                             }`}
                     >
                         {f === 'ALL' ? 'TODOS' : getStatusLabel(f)}

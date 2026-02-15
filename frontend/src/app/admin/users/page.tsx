@@ -1,21 +1,23 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchUsers, createUser, User } from '@/lib/api';
+import { fetchUsers, createUser, updateUser, User } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Plus, Save, X, User as UserIcon, Shield } from 'lucide-react';
+import { ArrowLeft, Plus, Save, X, User as UserIcon, Shield, Edit2, Key } from 'lucide-react';
 
 function UsersListContent() {
     const router = useRouter();
-    const [users, setUsers] = useState<any[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
 
     // Form State
     const [formData, setFormData] = useState({
         full_name: '',
         email: '',
+        phone: '',
         password: '',
         role: 'OPERATOR'
     });
@@ -38,17 +40,49 @@ function UsersListContent() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await createUser(formData);
+            if (editingUser) {
+                await updateUser(editingUser.id, {
+                    ...formData,
+                    // Don't send password if empty
+                    password: formData.password || undefined
+                });
+            } else {
+                await createUser(formData);
+            }
             setShowModal(false);
+            setEditingUser(null);
             loadUsers();
             setFormData({
                 full_name: '',
                 email: '',
+                phone: '',
                 password: '',
                 role: 'OPERATOR'
             });
         } catch (err) {
-            alert('Error creating user');
+            alert('Error al guardar usuario');
+        }
+    };
+
+    const handleEdit = (user: User) => {
+        setEditingUser(user);
+        setFormData({
+            full_name: user.full_name,
+            email: user.email,
+            phone: user.phone || '',
+            password: '', // Keep empty
+            role: user.role
+        });
+        setShowModal(true);
+    };
+
+    const handleToggleActive = async (user: User) => {
+        if (!confirm(`¿${user.is_active ? 'Desactivar' : 'Activar'} usuario ${user.full_name}?`)) return;
+        try {
+            await updateUser(user.id, { is_active: !user.is_active });
+            loadUsers();
+        } catch (err) {
+            alert('Error al actualizar estado');
         }
     };
 
@@ -71,7 +105,17 @@ function UsersListContent() {
                     </div>
                 </div>
                 <button
-                    onClick={() => setShowModal(true)}
+                    onClick={() => {
+                        setEditingUser(null);
+                        setFormData({
+                            full_name: '',
+                            email: '',
+                            phone: '',
+                            password: '',
+                            role: 'OPERATOR'
+                        });
+                        setShowModal(true);
+                    }}
                     className="p-3 bg-primary text-white rounded-2xl shadow-lg shadow-blue-200 interactive"
                 >
                     <Plus size={24} />
@@ -93,7 +137,22 @@ function UsersListContent() {
                         <div>
                             <h3 className="font-bold text-slate-900">{user.full_name}</h3>
                             <p className="text-sm text-slate-500">{user.email}</p>
+                            {user.phone && <p className="text-xs text-slate-400 mt-0.5">{user.phone}</p>}
                             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{user.role}</span>
+                        </div>
+                        <div className="ml-auto flex items-center gap-2">
+                            <button
+                                onClick={() => handleToggleActive(user)}
+                                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+                            >
+                                {user.is_active ? 'Activo' : 'Inactivo'}
+                            </button>
+                            <button
+                                onClick={() => handleEdit(user)}
+                                className="p-2 bg-slate-100 rounded-xl text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                            >
+                                <Edit2 size={16} />
+                            </button>
                         </div>
                     </motion.div>
                 ))}
@@ -114,7 +173,9 @@ function UsersListContent() {
                             <X size={20} />
                         </button>
 
-                        <h2 className="text-xl font-black text-slate-900 mb-6">Nuevo Usuario</h2>
+                        <h2 className="text-xl font-black text-slate-900 mb-6">
+                            {editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
+                        </h2>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
@@ -140,14 +201,30 @@ function UsersListContent() {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Contraseña</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Teléfono (Opcional)</label>
                                 <input
-                                    type="password"
-                                    required
+                                    type="tel"
                                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                    value={formData.password}
-                                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                    value={formData.phone}
+                                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
                                 />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                    {editingUser ? 'Nueva Contraseña (Opcional)' : 'Contraseña'}
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="password"
+                                        required={!editingUser}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                        value={formData.password}
+                                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                        placeholder={editingUser ? 'Dejar vacío para mantener' : ''}
+                                    />
+                                    <Key size={18} className="absolute left-3 top-3.5 text-slate-400" />
+                                </div>
                             </div>
 
                             <div>
@@ -168,7 +245,7 @@ function UsersListContent() {
                                 className="w-full bg-primary text-white py-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg shadow-blue-200 hover:shadow-xl hover:translate-y-[-2px] transition-all flex items-center justify-center gap-2 mt-4"
                             >
                                 <Save size={18} />
-                                Crear Usuario
+                                {editingUser ? 'Actualizar' : 'Crear Usuario'}
                             </button>
                         </form>
                     </motion.div>
