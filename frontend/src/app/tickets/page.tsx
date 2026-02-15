@@ -1,3 +1,5 @@
+'use client';
+
 import { Suspense, useEffect, useState } from 'react';
 import { fetchTickets, updateTicketStatus, Ticket, fetchForklifts, createTicket, Forklift, fetchUsers, User, fetchTicketCosts, addTicketCost, TicketCost } from '@/lib/api';
 import { useRouter } from 'next/navigation';
