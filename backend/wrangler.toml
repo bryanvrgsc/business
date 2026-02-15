@@ -6,9 +6,10 @@ compatibility_flags = ["nodejs_compat"]
 [observability]
 enabled = true
 
-# [[r2_buckets]]
-# binding = "R2"
-# bucket_name = "cmms-media"
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "cmms-media"
+preview_bucket_name = "cmms-media"
 
 # [[hyperdrive]]
 # binding = "HYPERDRIVE"

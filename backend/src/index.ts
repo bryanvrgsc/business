@@ -1,110 +1,71 @@
-import { Hono } from 'hono'
-import { cors } from 'hono/cors'
-import { Bindings, getDb } from './db'
-import auth from './auth'
-import { authMiddleware, UserPayload } from './middleware'
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { Bindings, getDb } from './db';
+import auth from './auth';
+import { authMiddleware, UserPayload } from './middleware';
 
 const app = new Hono<{
     Bindings: Bindings,
     Variables: { user: UserPayload }
-}>()
+}>();
 
 app.use('/*', cors({
     origin: '*',
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
-}))
+}));
 
-app.route('/api/auth', auth)
+app.route('/api/auth', auth);
 
 app.get('/', (c) => {
-    return c.text('CMMS Backend is running 🚀')
-})
+    return c.text('CMMS Backend is running 🚀');
+});
 
 app.get('/api/test-db', async (c) => {
-    const client = getDb(c.env)
+    const client = getDb(c.env);
     try {
-        await client.connect()
+        await client.connect();
         // Spanner/Postgres version check
-        const res = await client.query('SELECT version()')
-        await client.end()
+        const res = await client.query('SELECT version()');
+        await client.end();
         return c.json({
             status: 'ok',
             version: res.rows[0].version,
             connection: 'success'
-        })
+        });
     } catch (e: any) {
         return c.json({
             status: 'error',
             message: e.message,
             stack: e.stack
-        }, 500)
+        }, 500);
     }
-})
-
-// Public Seed Route (Development only)
-app.get('/seed', async (c) => {
-    const client = getDb(c.env)
-    try {
-        await client.connect()
-
-        // 1. Create Client
-        await client.query(`
-            INSERT INTO clients (id, name, contact_email, is_active)
-            VALUES ('c1', 'Empresa Demo S.A.', 'contacto@demo.com', TRUE)
-            ON CONFLICT (id) DO NOTHING;
-        `)
-
-        // 2. Create User (admin / admin) - Password hash is mock 'hashed_admin'
-        await client.query(`
-            INSERT INTO users (id, full_name, role, client_id, email, password_hash)
-            VALUES ('u1', 'Admin Usuario', 'ADMIN', 'c1', 'admin@example.com', 'hashed_admin')
-            ON CONFLICT (id) DO NOTHING;
-        `)
-
-        // 3. Create Forklifts
-        await client.query(`
-            INSERT INTO forklifts (id, internal_id, qr_code_payload, model, brand, client_id, operational_status)
-            VALUES 
-            ('f1', 'M-1551', 'M-1551', '8FGU25', 'Toyota', 'c1', 'OPERATIONAL'),
-            ('f2', 'M-2020', 'M-2020', '7000 Series', 'Raymond', 'c1', 'MAINTENANCE'),
-            ('f3', 'M-9999', 'M-9999', 'H-50', 'Linde', 'c1', 'OUT_OF_SERVICE')
-            ON CONFLICT (id) DO NOTHING;
-        `)
-
-        await client.end()
-        return c.json({ message: 'Database seeded successfully! 🌱' })
-    } catch (e: any) {
-        return c.json({ error: e.message, stack: e.stack }, 500)
-    }
-})
+});
 
 // Protected Routes
-app.use('/api/*', authMiddleware)
+app.use('/api/*', authMiddleware);
 
 // -----------------------------------------------------------------
 // Endpoint: GET /api/forklifts/:id
 // -----------------------------------------------------------------
 app.get('/api/forklifts/:id', async (c) => {
-    const id = c.req.param('id')
-    const client = getDb(c.env)
+    const id = c.req.param('id');
+    const client = getDb(c.env);
 
     try {
-        await client.connect()
+        await client.connect();
         // Try to find by ID or Internal ID (QR Code)
         const res = await client.query(
             `SELECT * FROM forklifts WHERE id = $1 OR internal_id = $1 OR qr_code_payload = $1`,
             [id]
-        )
+        );
 
         if (res.rows.length === 0) {
-            return c.json({ error: 'Forklift not found' }, 404)
+            return c.json({ error: 'Forklift not found' }, 404);
         }
 
-        const f = res.rows[0]
+        const f = res.rows[0];
 
-        // Map DB snake_case to frontend camelCase if needed, or update frontend types
-        // For now, let's return what frontend expects
         return c.json({
             id: f.id,
             internalId: f.internal_id,
@@ -114,29 +75,29 @@ app.get('/api/forklifts/:id', async (c) => {
             location: 'Planta Principal', // TODO: Join with locations table
             nextMaintenance: '2024-03-01', // TODO: Calculate from schedules
             image: '/forklift-placeholder.png' // TODO: R2 Image
-        })
+        });
     } catch (e: any) {
-        return c.json({ error: e.message }, 500)
+        return c.json({ error: e.message }, 500);
     } finally {
-        try { await client.end() } catch { }
+        try { await client.end(); } catch { }
     }
-})
+});
 
 // -----------------------------------------------------------------
 // Endpoint: POST /api/sync
 // -----------------------------------------------------------------
 app.post('/api/sync', async (c) => {
-    const user = c.get('user')
-    const report = await c.req.json()
+    const user = c.get('user');
+    const report = await c.req.json();
     // @ts-ignore
     const { forkliftId, templateId, answers, hasCriticalFailure, capturedAt } = report;
 
-    console.log(`Sync request from user ${user.sub} (Client: ${user.client_id})`)
+    console.log(`Sync request from user ${user.sub} (Client: ${user.client_id})`);
 
-    const client = getDb(c.env)
+    const client = getDb(c.env);
 
     try {
-        await client.connect()
+        await client.connect();
 
         // Generate a new ID for the report
         const reportId = crypto.randomUUID();
@@ -153,7 +114,7 @@ app.post('/api/sync', async (c) => {
             capturedAt || new Date().toISOString(),
             hasCriticalFailure || false,
             0.0, 0.0
-        ])
+        ]);
 
         // 2. Insert Answers
         if (answers) {
@@ -161,7 +122,7 @@ app.post('/api/sync', async (c) => {
                 await client.query(`
                     INSERT INTO report_answers (id, report_id, question_id, answer_value)
                     VALUES ($1, $2, $3, $4)
-                `, [crypto.randomUUID(), reportId, questionId, String(value)])
+                `, [crypto.randomUUID(), reportId, questionId, String(value)]);
             }
         }
 
@@ -171,55 +132,140 @@ app.post('/api/sync', async (c) => {
                 UPDATE forklifts 
                 SET operational_status = 'OUT_OF_SERVICE' 
                 WHERE id = $1
-            `, [forkliftId])
+            `, [forkliftId]);
+
+            // 4. Auto-create Maintenance Ticket
+            const ticketId = crypto.randomUUID();
+            const ticketNumber = `TKT-${Date.now().toString().slice(-6)}`; // Simple TKT-123456 generation
+
+            await client.query(`
+                INSERT INTO maintenance_tickets (id, ticket_number, forklift_id, status, priority, description, created_by, created_at)
+                VALUES ($1, $2, $3, 'OPEN', 'HIGH', 'Falla crítica detectada en inspección', $4, $5)
+            `, [ticketId, ticketNumber, forkliftId, user.sub, new Date().toISOString()]);
         }
 
         return c.json({
             message: 'Report synced successfully',
             synced_at: new Date().toISOString(),
             id: reportId
-        })
+        });
 
     } catch (e: any) {
-        console.error('Sync Error:', e)
-        return c.json({ error: e.message }, 500)
+        console.error('Sync Error:', e);
+        return c.json({ error: e.message }, 500);
     } finally {
-        try { await client.end() } catch { }
+        try { await client.end(); } catch { }
     }
-})
+});
 
 // -----------------------------------------------------------------
-// Endpoint: PUT /api/upload
+// Endpoint: GET /api/tickets
 // -----------------------------------------------------------------
+app.get('/api/tickets', async (c) => {
+    const client = getDb(c.env);
+    try {
+        await client.connect();
+        const res = await client.query(`
+            SELECT t.*, f.internal_id as forklift_internal_id, f.model as forklift_model 
+            FROM maintenance_tickets t
+            JOIN forklifts f ON t.forklift_id = f.id
+            ORDER BY t.created_at DESC
+        `);
+        return c.json(res.rows);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
 // -----------------------------------------------------------------
-// Endpoint: PUT /api/upload (DUMMY VERSION - R2 DISABLED)
+// Endpoint: PATCH /api/tickets/:id/status
+// -----------------------------------------------------------------
+app.patch('/api/tickets/:id/status', async (c) => {
+    const id = c.req.param('id');
+    const { status } = await c.req.json(); // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+    const client = getDb(c.env);
+
+    try {
+        await client.connect();
+        await client.query(`
+            UPDATE maintenance_tickets 
+            SET status = $1, updated_at = NOW()
+            WHERE id = $2
+        `, [status, id]);
+
+        return c.json({ message: 'Ticket status updated' });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// -----------------------------------------------------------------
+// Endpoint: PUT /api/upload (R2 ENABLED)
 // -----------------------------------------------------------------
 app.put('/api/upload', async (c) => {
     try {
-        // Just consume the body to enable upload simulation
-        await c.req.parseBody()
+        const body = await c.req.parseBody();
+        const file = body['file'];
 
-        // Return a dummy URL
-        const fileName = `dummy-${crypto.randomUUID()}.png`
+        if (!file || !(file instanceof File)) {
+            return c.json({ error: 'No file uploaded' }, 400);
+        }
+
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            return c.json({ error: 'Invalid file type. Only JPEG, PNG, WEBP allowed.' }, 400);
+        }
+
+        // Generate unique key
+        const key = `${crypto.randomUUID()}-${file.name}`;
+
+        // Upload to R2
+        await c.env.R2.put(key, await file.arrayBuffer(), {
+            httpMetadata: {
+                contentType: file.type,
+            },
+        });
 
         return c.json({
-            message: 'Upload successful (R2 Disabled)',
-            url: `/api/images/${fileName}`,
-            key: fileName
-        })
+            message: 'Upload successful',
+            url: `/api/images/${key}`,
+            key: key
+        });
 
     } catch (e: any) {
-        console.error('Upload error:', e)
-        return c.json({ error: e.message }, 500)
+        console.error('Upload Error:', e);
+        return c.json({ error: e.message }, 500);
     }
-})
+});
 
 // -----------------------------------------------------------------
-// Endpoint: GET /api/images/:key (DUMMY VERSION - R2 DISABLED)
+// Endpoint: GET /api/images/:key (R2 PROXY)
 // -----------------------------------------------------------------
 app.get('/api/images/:key', async (c) => {
-    // Return a redirect to a placeholder or 404
-    return c.redirect('https://placehold.co/600x400?text=Image+Upload+Disabled')
-})
+    const key = c.req.param('key');
 
-export default app
+    try {
+        const object = await c.env.R2.get(key);
+
+        if (!object) {
+            return c.json({ error: 'Image not found' }, 404);
+        }
+
+        const headers = new Headers();
+        object.writeHttpMetadata(headers);
+        headers.set('etag', object.httpEtag);
+
+        return new Response(object.body, {
+            headers,
+        });
+
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+export default app;

@@ -70,10 +70,10 @@ DELETE /api/users/:id           → Desactivar usuario (soft delete)
 ```
 
 **Criterios de aceptación:**
-- [ ] Un admin puede crear cuentas para su empresa
-- [ ] Un usuario solo ve datos de su empresa (tenant isolation)
-- [ ] Las sesiones expiran automáticamente
-- [ ] Los passwords se almacenan como hash bcrypt
+- [x] Un admin puede crear cuentas para su empresa
+- [x] Un usuario solo ve datos de su empresa (tenant isolation)
+- [x] Las sesiones expiran automáticamente
+- [x] Los passwords se almacenan como hash bcrypt
 
 ---
 
@@ -104,9 +104,9 @@ PATCH  /api/forklifts/:id/status → Cambiar estado operativo
 ```
 
 **Criterios de aceptación:**
-- [ ] Cada montacargas tiene un QR único e imprimible
-- [ ] Al escanear el QR se obtiene la ficha técnica completa
-- [ ] Un montacargas con `CRITICAL_STOP` se marca automáticamente como `OUT_OF_SERVICE`
+- [x] Cada montacargas tiene un QR único e imprimible
+- [x] Al escanear el QR se obtiene la ficha técnica completa
+- [x] Un montacargas con `CRITICAL_STOP` se marca automáticamente como `OUT_OF_SERVICE`
 
 ---
 
@@ -170,10 +170,10 @@ sequenceDiagram
 ```
 
 **Criterios de aceptación:**
-- [ ] Un reporte se puede llenar sin conexión a internet
-- [ ] La diferencia entre `captured_at` y `synced_at` es visible en el dashboard
+- [x] Un reporte se puede llenar sin conexión a internet
+- [x] La diferencia entre `captured_at` y `synced_at` es visible en el dashboard
 - [ ] Las fotos se almacenan en R2 con URLs firmadas
-- [ ] Un CRITICAL_STOP genera automáticamente un ticket de mantenimiento
+- [x] Un CRITICAL_STOP genera automáticamente un ticket de mantenimiento
 
 ---
 
@@ -202,7 +202,7 @@ PATCH  /api/tickets/:id/resolve  → Cerrar con notas
 ```
 
 **Criterios de aceptación:**
-- [ ] Un reporte con falla crítica genera un ticket automáticamente
+- [x] Un reporte con falla crítica genera un ticket automáticamente
 - [ ] El técnico puede ver sus tickets asignados en la app
 - [ ] Al cerrar un ticket se registra `resolved_at` y `resolution_notes`
 - [ ] El dashboard muestra métricas de tickets abiertos/cerrados por técnico

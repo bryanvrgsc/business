@@ -97,6 +97,44 @@ export async function fetchForkliftByQR(qrPayload: string): Promise<Forklift | n
     return fetchForkliftById(qrPayload);
 }
 
+// Tickets
+export interface Ticket {
+    id: string;
+    ticket_number: string;
+    forklift_internal_id: string;
+    forklift_model: string;
+    status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    description: string;
+    created_at: string;
+}
+
+export async function fetchTickets(): Promise<Ticket[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const res = await fetch(`${API_URL}/api/tickets`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch tickets');
+    return res.json();
+}
+
+export async function updateTicketStatus(id: string, status: string): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    await fetch(`${API_URL}/api/tickets/${id}/status`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+    });
+}
+
 export function logout() {
     if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
