@@ -11,11 +11,46 @@ export interface Forklift {
     image?: string;
 }
 
+export interface ClientLocation {
+    id: string;
+    name: string;
+}
+
+export async function fetchLocations(): Promise<ClientLocation[]> {
+    const token = ensureAuth();
+
+    const res = await fetch(`${API_URL}/api/client-locations`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch locations');
+    return res.json();
+}
+
+export async function updateUser(id: string, data: any): Promise<void> {
+    const token = ensureAuth();
+
+    await fetch(`${API_URL}/api/users/${id}`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+    });
+}
+
 export interface User {
     id: string;
+    full_name: string;
     email: string;
-    role: string;
+    phone?: string;
+    role: 'ADMIN' | 'TECH' | 'OPERATOR' | 'CLIENT';
     client_id: string;
+    is_active: boolean;
+    last_login_at?: string;
 }
 
 export interface AuthResponse {
@@ -29,6 +64,17 @@ function getToken() {
         return localStorage.getItem('token');
     }
     return null;
+}
+
+function ensureAuth() {
+    const token = getToken();
+    if (!token) {
+        if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+        }
+        throw new Error('Not authenticated');
+    }
+    return token;
 }
 
 export async function login(email: string, password: string): Promise<User> {
@@ -52,8 +98,7 @@ export async function login(email: string, password: string): Promise<User> {
 }
 
 export async function fetchForkliftById(id: string): Promise<Forklift | null> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     const res = await fetch(`${API_URL}/api/forklifts/${id}`, {
         headers: {
@@ -67,9 +112,21 @@ export async function fetchForkliftById(id: string): Promise<Forklift | null> {
     return res.json();
 }
 
+export async function fetchForklifts(): Promise<Forklift[]> {
+    const token = ensureAuth();
+
+    const res = await fetch(`${API_URL}/api/forklifts`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch forklifts');
+    return res.json();
+}
+
 export async function uploadImage(file: File): Promise<string> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     const formData = new FormData();
     formData.append('file', file);
@@ -97,6 +154,32 @@ export async function fetchForkliftByQR(qrPayload: string): Promise<Forklift | n
     return fetchForkliftById(qrPayload);
 }
 
+// Reports
+export interface Report {
+    id: string;
+    forklift_id: string;
+    user_id: string;
+    template_id: string;
+    captured_at: string;
+    has_critical_failure: boolean;
+    gps_latitude?: number;
+    gps_longitude?: number;
+    forklift_name?: string;
+    user_name?: string;
+    template_name?: string;
+}
+
+export async function fetchReports(): Promise<Report[]> {
+    const token = ensureAuth();
+
+    const res = await fetch(`${API_URL}/api/reports`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch reports');
+    return res.json();
+}
+
 // Tickets
 export interface Ticket {
     id: string;
@@ -110,8 +193,7 @@ export interface Ticket {
 }
 
 export async function fetchTickets(): Promise<Ticket[]> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     const res = await fetch(`${API_URL}/api/tickets`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -121,9 +203,21 @@ export async function fetchTickets(): Promise<Ticket[]> {
     return res.json();
 }
 
+export async function createTicket(data: any): Promise<void> {
+    const token = ensureAuth();
+
+    await fetch(`${API_URL}/api/tickets`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+    });
+}
+
 export async function updateTicketStatus(id: string, status: string): Promise<void> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     await fetch(`${API_URL}/api/tickets/${id}/status`, {
         method: 'PATCH',
@@ -141,16 +235,19 @@ export async function updateTicketStatus(id: string, status: string): Promise<vo
 export interface MaintenanceSchedule {
     id: string;
     forklift_id: string;
-    description: string;
-    due_date?: string;
-    interval_days?: number;
-    recurrence?: string;
+    forklift_name?: string;
+    task_name: string;
+    description?: string;
+    frequency_type: 'DAYS' | 'HOURS';
+    frequency_value: number;
+    next_due_at: string;
+    next_due_hours?: number;
+    is_active: boolean;
     created_at: string;
 }
 
 export async function fetchSchedules(): Promise<MaintenanceSchedule[]> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     const res = await fetch(`${API_URL}/api/maintenance/schedules`, {
         headers: {
@@ -163,8 +260,7 @@ export async function fetchSchedules(): Promise<MaintenanceSchedule[]> {
 }
 
 export async function createSchedule(data: any): Promise<void> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     await fetch(`${API_URL}/api/maintenance/schedules`, {
         method: 'POST',
@@ -178,8 +274,7 @@ export async function createSchedule(data: any): Promise<void> {
 
 // Admin - Forklifts
 export async function createForklift(data: any): Promise<void> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     await fetch(`${API_URL}/api/forklifts`, {
         method: 'POST',
@@ -193,8 +288,7 @@ export async function createForklift(data: any): Promise<void> {
 
 // Admin - Users
 export async function fetchUsers(): Promise<User[]> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     const res = await fetch(`${API_URL}/api/users`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -205,8 +299,7 @@ export async function fetchUsers(): Promise<User[]> {
 }
 
 export async function createUser(data: any): Promise<void> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
 
     await fetch(`${API_URL}/api/users`, {
         method: 'POST',
@@ -217,6 +310,7 @@ export async function createUser(data: any): Promise<void> {
         body: JSON.stringify(data)
     });
 }
+
 
 // Inventory
 export interface Part {
@@ -230,8 +324,7 @@ export interface Part {
 }
 
 export async function fetchInventory(): Promise<Part[]> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
     const res = await fetch(`${API_URL}/api/inventory`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -240,8 +333,7 @@ export async function fetchInventory(): Promise<Part[]> {
 }
 
 export async function createPart(data: any): Promise<void> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
     await fetch(`${API_URL}/api/inventory`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -262,8 +354,7 @@ export interface TicketCost {
 }
 
 export async function fetchTicketCosts(ticketId: string): Promise<TicketCost[]> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
     const res = await fetch(`${API_URL}/api/tickets/${ticketId}/costs`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -272,8 +363,7 @@ export async function fetchTicketCosts(ticketId: string): Promise<TicketCost[]> 
 }
 
 export async function addTicketCost(ticketId: string, data: any): Promise<void> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
     await fetch(`${API_URL}/api/tickets/${ticketId}/costs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -300,8 +390,7 @@ export interface KPIData {
 }
 
 export async function fetchKPIs(): Promise<KPIData> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
+    const token = ensureAuth();
     const res = await fetch(`${API_URL}/api/kpis`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
