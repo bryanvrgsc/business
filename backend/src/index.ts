@@ -252,6 +252,110 @@ app.post('/api/schedules', async (c) => {
 
 /**
  * ==========================================
+ * INVENTORY & COSTS API
+ * ==========================================
+ */
+
+// GET /api/inventory
+app.get('/api/inventory', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+    try {
+        await client.connect();
+        const res = await client.query(`
+            SELECT * FROM parts_inventory
+            WHERE client_id = $1
+            ORDER BY name ASC
+        `, [user.client_id]);
+        return c.json(res.rows);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// POST /api/inventory
+app.post('/api/inventory', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const { part_number, name, current_stock, min_stock, unit_cost, supplier } = body;
+    const id = crypto.randomUUID();
+
+    try {
+        await client.connect();
+        await client.query(`
+            INSERT INTO parts_inventory (id, part_number, name, current_stock, min_stock, unit_cost, supplier, client_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [id, part_number, name, current_stock || 0, min_stock || 1, unit_cost || 0, supplier, user.client_id]);
+        return c.json({ message: 'Part added', id });
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// PATCH /api/inventory/:id (Update stock)
+app.patch('/api/inventory/:id', async (c) => {
+    const id = c.req.param('id');
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const { current_stock, unit_cost } = body;
+
+    try {
+        await client.connect();
+        await client.query(`
+            UPDATE parts_inventory 
+            SET current_stock = COALESCE($1, current_stock), 
+                unit_cost = COALESCE($2, unit_cost),
+                updated_at = NOW()
+            WHERE id = $3
+        `, [current_stock, unit_cost, id]);
+        return c.json({ message: 'Part updated' });
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// GET /api/tickets/:id/costs
+app.get('/api/tickets/:id/costs', async (c) => {
+    const ticketId = c.req.param('id');
+    const client = getDb(c.env);
+    try {
+        await client.connect();
+        const res = await client.query(`
+            SELECT * FROM ticket_costs
+            WHERE ticket_id = $1
+            ORDER BY created_at DESC
+        `, [ticketId]);
+        return c.json(res.rows);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// POST /api/tickets/:id/costs
+app.post('/api/tickets/:id/costs', async (c) => {
+    const ticketId = c.req.param('id');
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const { cost_type, description, quantity, unit_cost, is_billable } = body;
+    const id = crypto.randomUUID();
+    const total_cost = (quantity || 1) * unit_cost;
+
+    try {
+        await client.connect();
+        await client.query(`
+            INSERT INTO ticket_costs (id, ticket_id, cost_type, description, quantity, unit_cost, total_cost, is_billable)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [id, ticketId, cost_type, description, quantity || 1, unit_cost, total_cost, is_billable !== false]);
+        return c.json({ message: 'Cost added', id, total_cost });
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+
+/**
+ * ==========================================
  * ADMIN API (Users & Forklifts)
  * ==========================================
  */

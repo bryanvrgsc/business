@@ -178,6 +178,69 @@ export async function createUser(data: any): Promise<void> {
     });
 }
 
+// Inventory
+export interface Part {
+    id: string;
+    part_number: string;
+    name: string;
+    current_stock: number;
+    min_stock: number;
+    unit_cost: number;
+    supplier: string;
+}
+
+export async function fetchInventory(): Promise<Part[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${API_URL}/api/inventory`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch inventory');
+    return res.json();
+}
+
+export async function createPart(data: any): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    await fetch(`${API_URL}/api/inventory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
+// Ticket Costs
+export interface TicketCost {
+    id: string;
+    ticket_id: string;
+    cost_type: string;
+    description: string;
+    quantity: number;
+    unit_cost: number;
+    total_cost: number;
+    is_billable: boolean;
+}
+
+export async function fetchTicketCosts(ticketId: string): Promise<TicketCost[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${API_URL}/api/tickets/${ticketId}/costs`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch costs');
+    return res.json();
+}
+
+export async function addTicketCost(ticketId: string, data: any): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    await fetch(`${API_URL}/api/tickets/${ticketId}/costs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
 export function logout() {
     if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
