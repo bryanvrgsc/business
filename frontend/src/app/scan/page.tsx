@@ -43,7 +43,6 @@ export default function ScanPage() {
                         <Scanner
                             onScan={handleScan}
                             components={{
-                                audio: false,
                                 onOff: true,
                                 torch: true,
                             }}

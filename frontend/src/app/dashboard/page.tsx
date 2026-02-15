@@ -20,6 +20,13 @@ export default function DashboardPage() {
         () => db.reports.filter(r => !!r.syncedAt).reverse().limit(5).toArray()
     );
 
+    const handleSync = async () => {
+        if (isSyncing || !navigator.onLine) return;
+        setIsSyncing(true);
+        await syncReports();
+        setIsSyncing(false);
+    };
+
     useEffect(() => {
         setIsOnline(navigator.onLine);
 
@@ -38,13 +45,6 @@ export default function DashboardPage() {
             window.removeEventListener('offline', handleOffline);
         };
     }, []);
-
-    const handleSync = async () => {
-        if (isSyncing || !navigator.onLine) return;
-        setIsSyncing(true);
-        await syncReports();
-        setIsSyncing(false);
-    };
 
     return (
         <div className="max-w-md mx-auto pb-20">

@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.1.15:8787'; // Update with your local IP
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cmms-backend.bryanvrgsc.workers.dev';
 
 export interface Forklift {
     id: string;

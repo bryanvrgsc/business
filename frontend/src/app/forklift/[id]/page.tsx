@@ -1,4 +1,5 @@
 'use client';
+export const runtime = 'edge';
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -55,8 +56,8 @@ export default function ForkliftDetailPage() {
                     <div className="flex items-center justify-between mb-4 bg-gray-50 p-3 rounded-lg">
                         <span className="text-sm text-gray-500 font-medium">Estado Actual</span>
                         <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-bold ${isOperational ? 'bg-green-100 text-green-700' :
-                                isMaintenance ? 'bg-yellow-100 text-yellow-700' :
-                                    'bg-red-100 text-red-700'
+                            isMaintenance ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
                             }`}>
                             {isOperational && <CheckCircle size={16} />}
                             {isMaintenance && <Wrench size={16} />}

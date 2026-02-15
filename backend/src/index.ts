@@ -191,35 +191,19 @@ app.post('/api/sync', async (c) => {
 // -----------------------------------------------------------------
 // Endpoint: PUT /api/upload
 // -----------------------------------------------------------------
+// -----------------------------------------------------------------
+// Endpoint: PUT /api/upload (DUMMY VERSION - R2 DISABLED)
+// -----------------------------------------------------------------
 app.put('/api/upload', async (c) => {
-    // 1. Check Auth (simple check for now, can use middleware if preferred)
-    // const user = c.get('user') // if we use authMiddleware on this route
-    // But for file uploads sometimes we want to keep it simple or use a presigned URL approach.
-    // Let's use the authMiddleware for /api/* so this is protected.
-
     try {
-        const formData = await c.req.parseBody()
-        const file = formData['file']
+        // Just consume the body to enable upload simulation
+        await c.req.parseBody()
 
-        if (!file || !(file instanceof File)) {
-            return c.json({ error: 'No file uploaded' }, 400)
-        }
-
-        const fileName = `${crypto.randomUUID()}-${file.name}`
-
-        // 2. Upload to R2
-        await c.env.R2.put(fileName, file.stream(), {
-            httpMetadata: {
-                contentType: file.type,
-            },
-        })
-
-        // 3. Return Public URL (Assuming public access is enabled or via worker)
-        // For private buckets, we would need a GET endpoint to proxy or presign.
-        // Let's assume we serve it via GET /api/images/:key for now
+        // Return a dummy URL
+        const fileName = `dummy-${crypto.randomUUID()}.png`
 
         return c.json({
-            message: 'Upload successful',
+            message: 'Upload successful (R2 Disabled)',
             url: `/api/images/${fileName}`,
             key: fileName
         })
@@ -231,24 +215,11 @@ app.put('/api/upload', async (c) => {
 })
 
 // -----------------------------------------------------------------
-// Endpoint: GET /api/images/:key
+// Endpoint: GET /api/images/:key (DUMMY VERSION - R2 DISABLED)
 // -----------------------------------------------------------------
 app.get('/api/images/:key', async (c) => {
-    const key = c.req.param('key')
-
-    const object = await c.env.R2.get(key)
-
-    if (!object) {
-        return c.json({ error: 'Image not found' }, 404)
-    }
-
-    const headers = new Headers()
-    object.writeHttpMetadata(headers)
-    headers.set('etag', object.httpEtag)
-
-    return new Response(object.body, {
-        headers,
-    })
+    // Return a redirect to a placeholder or 404
+    return c.redirect('https://placehold.co/600x400?text=Image+Upload+Disabled')
 })
 
 export default app
