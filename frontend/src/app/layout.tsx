@@ -30,7 +30,7 @@ export default function RootLayout({
         {/* We show navbar on all pages, but conditionally handle login page in specific layouts if needed. 
               For now, simple global layout. */}
         <Navbar />
-        <main className="flex-1 p-4 mb-16 md:mb-0 overflow-y-auto">
+        <main className="flex-1 p-4 mb-20 pb-safe md:mb-0 overflow-y-auto">
           {children}
         </main>
       </body>
