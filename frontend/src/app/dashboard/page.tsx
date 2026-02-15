@@ -162,6 +162,23 @@ export default function DashboardPage() {
                         </div>
                     </Link>
                 </motion.div>
+
+                <motion.div variants={itemVariants} className="col-span-2">
+                    <Link href="/maintenance/preventive" className="premium-card p-4 flex items-center justify-between gap-4 group interactive">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-emerald-50 text-emerald-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                <Clock size={24} />
+                            </div>
+                            <div className="text-left">
+                                <span className="block font-black text-slate-900">Mantenimiento Preventivo</span>
+                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Programar tareas</span>
+                            </div>
+                        </div>
+                        <div className="bg-slate-50 p-2 rounded-xl text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors">
+                            <ChevronRight size={20} />
+                        </div>
+                    </Link>
+                </motion.div>
             </div>
 
             {/* Activity Feed */}

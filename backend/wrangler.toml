@@ -6,6 +6,9 @@ compatibility_flags = ["nodejs_compat"]
 [observability]
 enabled = true
 
+[triggers]
+crons = ["0 0 * * *"] # Run once a day at midnight UTC
+
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "cmms-media"

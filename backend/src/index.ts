@@ -203,6 +203,53 @@ app.patch('/api/tickets/:id/status', async (c) => {
     }
 });
 
+/**
+ * ==========================================
+ * PREVENTIVE MAINTENANCE API
+ * ==========================================
+ */
+
+// GET /api/schedules
+app.get('/api/schedules', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+
+    const result = await client.query(`
+        SELECT ps.*, f.internal_id as forklift_name
+        FROM preventive_schedules ps
+        LEFT JOIN forklifts f ON ps.forklift_id = f.id
+        WHERE ps.client_id = $1 AND ps.is_active = TRUE
+        ORDER BY ps.next_due_at ASC
+    `, [user.client_id]);
+
+    return c.json(result.rows);
+});
+
+// POST /api/schedules
+app.post('/api/schedules', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+    const body = await c.req.json();
+
+    const { forklift_id, task_name, frequency_type, frequency_value, target_model } = body;
+
+    const id = crypto.randomUUID();
+    // Calculate initial next_due_at based on frequency
+    let next_due_at = new Date();
+    if (frequency_type === 'DAYS') {
+        next_due_at.setDate(next_due_at.getDate() + parseInt(frequency_value));
+    }
+    // Note: HOURS logic would require syncing current hours from forklifts
+
+    await client.query(`
+        INSERT INTO preventive_schedules (id, client_id, forklift_id, target_model, task_name, frequency_type, frequency_value, next_due_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [id, user.client_id, forklift_id, target_model, task_name, frequency_type, frequency_value, next_due_at.toISOString()]);
+
+    return c.json({ message: 'Schedule created', id });
+});
+
+
 // -----------------------------------------------------------------
 // Endpoint: PUT /api/upload (R2 ENABLED)
 // -----------------------------------------------------------------
@@ -268,4 +315,48 @@ app.get('/api/images/:key', async (c) => {
     }
 });
 
-export default app;
+export default {
+    fetch: app.fetch,
+    async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
+        const client = getDb(env);
+        console.log('Cron Triggered: Checking preventive maintenance...');
+
+        try {
+            // Find due schedules
+            const dueSchedules = await client.query(`
+                SELECT * FROM preventive_schedules 
+                WHERE is_active = TRUE AND next_due_at <= NOW()
+            `);
+
+            for (const schedule of dueSchedules.rows) {
+                console.log(`Processing schedule: ${schedule.id} - ${schedule.task_name}`);
+
+                // Create Ticket
+                const ticketId = crypto.randomUUID();
+                const ticketNumber = `PM-${Date.now().toString().slice(-6)}`;
+
+                await client.query(`
+                    INSERT INTO maintenance_tickets (id, ticket_number, forklift_id, schedule_id, status, priority, description, created_by, created_at)
+                    VALUES ($1, $2, $3, $4, 'OPEN', 'MEDIA', $5, 'SYSTEM', NOW())
+                `, [ticketId, ticketNumber, schedule.forklift_id, schedule.id, `Mantenimiento Preventivo: ${schedule.task_name}`]);
+
+                // Update Schedule (Next Due Date)
+                let nextDate = new Date();
+                if (schedule.frequency_type === 'DAYS') {
+                    nextDate.setDate(nextDate.getDate() + schedule.frequency_value);
+                }
+
+                await client.query(`
+                    UPDATE preventive_schedules 
+                    SET last_executed_at = NOW(), next_due_at = $1 
+                    WHERE id = $2
+                `, [nextDate.toISOString(), schedule.id]);
+            }
+
+            console.log(`Processed ${dueSchedules.rows.length} preventive schedules.`);
+
+        } catch (e) {
+            console.error('Error in Cron Handler:', e);
+        }
+    }
+};
