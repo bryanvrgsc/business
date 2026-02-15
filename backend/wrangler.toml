@@ -1,0 +1,24 @@
+name = "cmms-backend"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "cmms-media"
+
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "INSERT-ID-HERE"
+
+[vars]
+# IP Publica de la VM Spanner Proxy (PGAdapter)
+# IP Publica de la VM Spanner Proxy (PGAdapter)
+DATABASE_URL = "postgres://user:password@34.51.110.96:5432/business"
+
+[dev]
+ip = "0.0.0.0"
+port = 8787

@@ -1,0 +1,19 @@
+{
+  "name": "cmms-backend",
+  "scripts": {
+    "dev": "wrangler dev --host 0.0.0.0",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "pg": "^8.11.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240208.0",
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.0.0",
+    "wrangler": "^3.28.0"
+  }
+}
