@@ -138,7 +138,12 @@ function UsersListContent() {
                             <h3 className="font-bold text-slate-900">{user.full_name}</h3>
                             <p className="text-sm text-slate-500">{user.email}</p>
                             {user.phone && <p className="text-xs text-slate-400 mt-0.5">{user.phone}</p>}
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{user.role}</span>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{user.role}</span>
+                                {user.last_login_at && (
+                                    <span className="text-[10px] text-slate-300">• {new Date(user.last_login_at).toLocaleDateString()}</span>
+                                )}
+                            </div>
                         </div>
                         <div className="ml-auto flex items-center gap-2">
                             <button
@@ -237,6 +242,7 @@ function UsersListContent() {
                                     <option value="OPERATOR">Operador</option>
                                     <option value="TECH">Técnico</option>
                                     <option value="ADMIN">Administrador</option>
+                                    <option value="CLIENT">Cliente</option>
                                 </select>
                             </div>
 

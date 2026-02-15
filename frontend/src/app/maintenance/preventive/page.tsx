@@ -1,10 +1,10 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchSchedules, createSchedule, fetchForklifts, MaintenanceSchedule as Schedule, Forklift } from '@/lib/api';
+import { fetchSchedules, createSchedule, updateSchedule, fetchForklifts, Schedule, Forklift } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Calendar, Plus, Clock, Save, X, Truck } from 'lucide-react';
+import { ArrowLeft, Plus, Save, X, CalendarClock, Clock, AlertCircle, CheckCircle } from 'lucide-react';
 
 function SchedulesListContent() {
     const router = useRouter();
@@ -14,32 +14,27 @@ function SchedulesListContent() {
     const [forklifts, setForklifts] = useState<Forklift[]>([]);
 
     // Form State
+    const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
+
     const [formData, setFormData] = useState({
+        forklift_id: '',
         task_name: '',
         frequency_type: 'DAYS',
         frequency_value: 30,
-        forklift_id: '',
         target_model: ''
     });
 
-    useEffect(() => {
-        loadSchedules();
-        loadForklifts();
-    }, []);
+    useEffect(() => { loadData(); }, []);
 
-    const loadForklifts = async () => {
+    const loadData = async () => {
+        setLoading(true);
         try {
-            const data = await fetchForklifts();
-            setForklifts(data);
-        } catch (err) {
-            console.error('Failed to load forklifts');
-        }
-    };
-
-    const loadSchedules = async () => {
-        try {
-            const data = await fetchSchedules();
-            setSchedules(data);
+            const [schedulesData, forkliftsData] = await Promise.all([
+                fetchSchedules(),
+                fetchForklifts()
+            ]);
+            setSchedules(schedulesData);
+            setForklifts(forkliftsData);
         } catch (err) {
             console.error(err);
         } finally {
@@ -47,25 +42,46 @@ function SchedulesListContent() {
         }
     };
 
+    const handleEdit = (schedule: Schedule) => {
+        setEditingSchedule(schedule);
+        setFormData({
+            forklift_id: schedule.forklift_id,
+            task_name: schedule.task_name,
+            frequency_type: schedule.frequency_type,
+            frequency_value: schedule.frequency_value,
+            target_model: schedule.target_model || ''
+        });
+        setShowModal(true);
+    };
+
+    const handleToggleActive = async (schedule: Schedule, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm(`¿${schedule.is_active ? 'Desactivar' : 'Activar'} este programa?`)) return;
+
+        try {
+            await updateSchedule(schedule.id, { is_active: !schedule.is_active });
+            loadData();
+        } catch (err) {
+            alert('Error al actualizar estado');
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await createSchedule({
-                ...formData,
-                frequency_type: formData.frequency_type as 'DAYS' | 'HOURS',
-                forklift_id: formData.forklift_id || 'ALL' // Simple hack for now
-            });
+            if (editingSchedule) {
+                await updateSchedule(editingSchedule.id, formData);
+                alert('Programa actualizado');
+            } else {
+                await createSchedule(formData);
+                alert('Programa creado exitosamente');
+            }
             setShowModal(false);
-            loadSchedules();
-            setFormData({
-                task_name: '',
-                frequency_type: 'DAYS',
-                frequency_value: 30,
-                forklift_id: '',
-                target_model: ''
-            });
+            setEditingSchedule(null);
+            loadData();
+            setFormData({ forklift_id: '', task_name: '', frequency_type: 'DAYS', frequency_value: 30, target_model: '' });
         } catch (err) {
-            alert('Error creating schedule');
+            alert('Error al guardar programa');
         }
     };
 
@@ -88,7 +104,11 @@ function SchedulesListContent() {
                     </div>
                 </div>
                 <button
-                    onClick={() => setShowModal(true)}
+                    onClick={() => {
+                        setEditingSchedule(null);
+                        setFormData({ forklift_id: '', task_name: '', frequency_type: 'DAYS', frequency_value: 30, target_model: '' });
+                        setShowModal(true);
+                    }}
                     className="p-3 bg-primary text-white rounded-2xl shadow-lg shadow-blue-200 interactive"
                 >
                     <Plus size={24} />
@@ -98,8 +118,8 @@ function SchedulesListContent() {
             <div className="space-y-4">
                 {schedules.length === 0 ? (
                     <div className="text-center py-12 premium-card bg-slate-50/50 border-dashed border-2">
-                        <Calendar className="mx-auto text-slate-300 mb-3" size={32} />
-                        <p className="text-slate-400 font-bold text-sm">No hay planes activos</p>
+                        <CalendarClock className="mx-auto text-slate-300 mb-3" size={32} />
+                        <p className="text-slate-400 font-bold text-sm">Sin programas activos</p>
                     </div>
                 ) : (
                     schedules.map((schedule, idx) => (
@@ -108,85 +128,58 @@ function SchedulesListContent() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: idx * 0.05 }}
                             key={schedule.id}
-                            className="premium-card p-5 relative overflow-hidden group"
+                            className={`premium-card p-5 border-l-4 ${schedule.is_active ? 'border-l-primary' : 'border-l-slate-300 opacity-75'}`}
+                            onClick={() => handleEdit(schedule)}
                         >
                             <div className="flex justify-between items-start mb-2">
-                                <h3 className="font-bold text-slate-900 text-lg">{schedule.task_name}</h3>
-                                <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100">
-                                    {schedule.frequency_value} {schedule.frequency_type === 'DAYS' ? 'Días' : 'Horas'}
-                                </span>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-slate-900">{schedule.task_name}</h3>
+                                        {!schedule.is_active && <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">INACTIVO</span>}
+                                    </div>
+                                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                        {schedule.forklift_name || schedule.target_model || 'General'}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={(e) => handleToggleActive(schedule, e)}
+                                    className={`p-2 rounded-full transition-colors ${schedule.is_active ? 'text-green-500 bg-green-50' : 'text-slate-400 bg-slate-100'}`}
+                                >
+                                    <CheckCircle size={18} />
+                                </button>
                             </div>
 
-                            <div className="flex items-center gap-2 text-slate-500 text-xs font-bold uppercase tracking-wider mb-4">
-                                <Truck size={14} />
-                                {schedule.forklift_name || 'Todos los modelos'}
-                            </div>
-
-                            <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                                    <Clock size={12} /> Prox: {new Date(schedule.next_due_at).toLocaleDateString()}
-                                </span>
-                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                            <div className="flex items-center gap-4 text-xs text-slate-500 mt-3 pt-3 border-t border-slate-50">
+                                <div className="flex items-center gap-1.5">
+                                    <Clock size={14} className="text-primary" />
+                                    <span className="font-bold">Cada {schedule.frequency_value} {schedule.frequency_type === 'DAYS' ? 'Días' : 'Horas'}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-amber-600">
+                                    <AlertCircle size={14} />
+                                    <span className="font-bold">Prox: {new Date(schedule.next_due_at).toLocaleDateString()}</span>
+                                </div>
                             </div>
                         </motion.div>
                     ))
                 )}
             </div>
 
-            {/* Create Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl relative"
+                        className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto"
                     >
-                        <button
-                            onClick={() => setShowModal(false)}
-                            className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 transition-colors"
-                        >
+                        <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 transition-colors">
                             <X size={20} />
                         </button>
 
-                        <h2 className="text-xl font-black text-slate-900 mb-6">Nuevo Plan</h2>
+                        <h2 className="text-xl font-black text-slate-900 mb-6">
+                            {editingSchedule ? 'Editar Programa' : 'Nuevo Programa'}
+                        </h2>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nombre de la Tarea</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                    placeholder="Ej. Cambio de Aceite"
-                                    value={formData.task_name}
-                                    onChange={e => setFormData({ ...formData, task_name: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Frecuencia</label>
-                                    <input
-                                        type="number"
-                                        required
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                        value={formData.frequency_value}
-                                        onChange={e => setFormData({ ...formData, frequency_value: parseInt(e.target.value) })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Unidad</label>
-                                    <select
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                        value={formData.frequency_type}
-                                        onChange={e => setFormData({ ...formData, frequency_type: e.target.value })}
-                                    >
-                                        <option value="DAYS">Días</option>
-                                        <option value="HOURS">Horas</option>
-                                    </select>
-                                </div>
-                            </div>
-
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Montacargas</label>
                                 <select
@@ -194,19 +187,50 @@ function SchedulesListContent() {
                                     value={formData.forklift_id}
                                     onChange={e => setFormData({ ...formData, forklift_id: e.target.value })}
                                 >
-                                    <option value="">Aplicar a toda la flota</option>
+                                    <option value="">Seleccionar equipo (Opcional)</option>
                                     {forklifts.map(f => (
-                                        <option key={f.id} value={f.id}>{f.internalId} - {f.model}</option>
+                                        <option key={f.id} value={f.id}>{f.internalId} — {f.model}</option>
                                     ))}
                                 </select>
                             </div>
 
-                            <button
-                                type="submit"
-                                className="w-full bg-primary text-white py-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg shadow-blue-200 hover:shadow-xl hover:translate-y-[-2px] transition-all flex items-center justify-center gap-2 mt-4"
-                            >
-                                <Save size={18} />
-                                Guardar Plan
+                            {!formData.forklift_id && (
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Modelo Objetivo</label>
+                                    <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                        placeholder="Ej. TOYOTA-8"
+                                        value={formData.target_model} onChange={e => setFormData({ ...formData, target_model: e.target.value })} />
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tarea / Servicio</label>
+                                <input type="text" required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                    placeholder="Ej. Cambio de Aceite"
+                                    value={formData.task_name} onChange={e => setFormData({ ...formData, task_name: e.target.value })} />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Frecuencia</label>
+                                    <input type="number" required min="1" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                        value={formData.frequency_value} onChange={e => setFormData({ ...formData, frequency_value: parseInt(e.target.value) })} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tipo</label>
+                                    <select
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                        value={formData.frequency_type}
+                                        onChange={e => setFormData({ ...formData, frequency_type: e.target.value })}
+                                    >
+                                        <option value="DAYS">Días</option>
+                                        <option value="HOURS">Horas de Uso</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <button type="submit" className="w-full bg-primary text-white py-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg shadow-blue-200 hover:shadow-xl hover:translate-y-[-2px] transition-all flex items-center justify-center gap-2 mt-4">
+                                <Save size={18} /> {editingSchedule ? 'Actualizar' : 'Crear'} Programa
                             </button>
                         </form>
                     </motion.div>

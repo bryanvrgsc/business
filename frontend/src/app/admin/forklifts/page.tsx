@@ -1,17 +1,17 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { createForklift, fetchLocations, ClientLocation, uploadImage } from '@/lib/api';
+import { createForklift, fetchLocations, ClientLocation, uploadImage, fetchForklifts, Forklift, updateForklift } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Plus, Save, X, Truck, Camera, Upload } from 'lucide-react';
+import { ArrowLeft, Plus, Save, X, Truck, Camera, Edit2 } from 'lucide-react';
 
 function ForkliftsListContent() {
     const router = useRouter();
-    // Ideally fetch forklifts list here, but we focused on create for now
-    // const [forklifts, setForklifts] = useState<any[]>([]);
+    const [forklifts, setForklifts] = useState<Forklift[]>([]);
     const [loading, setLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const [editingForklift, setEditingForklift] = useState<Forklift | null>(null);
 
     const [locations, setLocations] = useState<ClientLocation[]>([]);
     const [uploading, setUploading] = useState(false);
@@ -26,18 +26,32 @@ function ForkliftsListContent() {
         current_hours: 0,
         year: new Date().getFullYear(),
         location_id: '',
-        image: ''
+        image: '',
+        status: 'OPERATIONAL'
     });
 
     useEffect(() => {
         loadLocations();
+        loadForklifts();
     }, []);
+
+    const loadForklifts = async () => {
+        setLoading(true);
+        try {
+            const data = await fetchForklifts();
+            setForklifts(data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const loadLocations = async () => {
         try {
             const data = await fetchLocations();
             setLocations(data);
-            if (data.length > 0) {
+            if (data.length > 0 && !formData.location_id) {
                 setFormData(prev => ({ ...prev, location_id: data[0].id }));
             }
         } catch (err) {
@@ -58,12 +72,36 @@ function ForkliftsListContent() {
         }
     };
 
+    const handleEdit = (forklift: Forklift) => {
+        setEditingForklift(forklift);
+        setFormData({
+            internal_id: forklift.internalId,
+            model: forklift.model,
+            brand: forklift.brand,
+            serial_number: forklift.serialNumber || '',
+            fuel_type: forklift.fuelType || 'GAS_LP',
+            current_hours: forklift.currentHours || 0,
+            year: forklift.year || new Date().getFullYear(),
+            location_id: locations.find(l => l.name === forklift.location)?.id || '',
+            image: forklift.image || '',
+            status: forklift.status || 'OPERATIONAL'
+        });
+        setShowModal(true);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await createForklift(formData);
-            alert('Montacargas creado exitosamente');
+            if (editingForklift) {
+                await updateForklift(editingForklift.id, formData);
+                alert('Montacargas actualizado');
+            } else {
+                await createForklift(formData);
+                alert('Montacargas creado exitosamente');
+            }
             setShowModal(false);
+            setEditingForklift(null);
+            loadForklifts();
             setFormData({
                 internal_id: '',
                 model: '',
@@ -73,12 +111,19 @@ function ForkliftsListContent() {
                 current_hours: 0,
                 year: new Date().getFullYear(),
                 location_id: locations.length > 0 ? locations[0].id : '',
-                image: ''
+                image: '',
+                status: 'OPERATIONAL'
             });
         } catch (err) {
-            alert('Error creando montacargas');
+            alert('Error al guardar montacargas');
         }
     };
+
+    if (loading) return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+            <div className="w-10 h-10 border-4 border-slate-200 border-t-primary rounded-full animate-spin"></div>
+        </div>
+    );
 
     return (
         <div className="max-w-xl mx-auto pb-24 px-4 pt-6">
@@ -93,20 +138,85 @@ function ForkliftsListContent() {
                     </div>
                 </div>
                 <button
-                    onClick={() => setShowModal(true)}
+                    onClick={() => {
+                        setEditingForklift(null);
+                        setFormData({
+                            internal_id: '',
+                            model: '',
+                            brand: '',
+                            serial_number: '',
+                            fuel_type: 'GAS_LP',
+                            current_hours: 0,
+                            year: new Date().getFullYear(),
+                            location_id: locations.length > 0 ? locations[0].id : '',
+                            image: '',
+                            status: 'OPERATIONAL'
+                        });
+                        setShowModal(true);
+                    }}
                     className="p-3 bg-primary text-white rounded-2xl shadow-lg shadow-blue-200 interactive"
                 >
                     <Plus size={24} />
                 </button>
             </div>
 
-            <div className="text-center py-12 premium-card bg-slate-50/50 border-dashed border-2">
-                <Truck className="mx-auto text-slate-300 mb-3" size={32} />
-                <p className="text-slate-400 font-bold text-sm">Lista de montacargas (Próximamente)</p>
-                <p className="text-xs text-slate-300 mt-1">Usa el botón + para agregar nuevos</p>
+            <div className="space-y-4">
+                {forklifts.length === 0 ? (
+                    <div className="text-center py-12 premium-card bg-slate-50/50 border-dashed border-2">
+                        <Truck className="mx-auto text-slate-300 mb-3" size={32} />
+                        <p className="text-slate-400 font-bold text-sm">Lista de montacargas vacía</p>
+                        <p className="text-xs text-slate-300 mt-1">Usa el botón + para agregar nuevos</p>
+                    </div>
+                ) : (
+                    forklifts.map((forklift, idx) => (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.05 }}
+                            key={forklift.id}
+                            className="premium-card p-4 flex gap-4"
+                        >
+                            <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0">
+                                {forklift.image ? (
+                                    <img src={forklift.image} alt={forklift.model} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                        <Truck size={24} />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h3 className="font-bold text-slate-900">{forklift.internalId}</h3>
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{forklift.brand} {forklift.model}</p>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${forklift.status === 'OPERATIONAL' ? 'bg-green-50 text-green-600 border-green-100' :
+                                        forklift.status === 'MAINTENANCE' ? 'bg-yellow-50 text-yellow-600 border-yellow-100' :
+                                            'bg-red-50 text-red-600 border-red-100'
+                                        }`}>
+                                        {forklift.status === 'OPERATIONAL' ? 'OPERATIVO' :
+                                            forklift.status === 'MAINTENANCE' ? 'MANTENIMIENTO' : 'FUERA DE SERVICIO'}
+                                    </span>
+                                </div>
+                                <div className="mt-2 text-xs text-slate-500">
+                                    <p>Ubicación: <span className="font-bold">{forklift.location}</span></p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col justify-center">
+                                <button
+                                    onClick={() => handleEdit(forklift)}
+                                    className="p-2 bg-slate-50 text-slate-400 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                >
+                                    <Edit2 size={16} />
+                                </button>
+                            </div>
+                        </motion.div>
+                    ))
+                )}
             </div>
 
-            {/* Create Modal */}
+            {/* Create/Edit Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <motion.div
@@ -121,7 +231,9 @@ function ForkliftsListContent() {
                             <X size={20} />
                         </button>
 
-                        <h2 className="text-xl font-black text-slate-900 mb-6">Nuevo Montacargas</h2>
+                        <h2 className="text-xl font-black text-slate-900 mb-6">
+                            {editingForklift ? 'Editar Montacargas' : 'Nuevo Montacargas'}
+                        </h2>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {/* Image Upload */}
@@ -177,6 +289,36 @@ function ForkliftsListContent() {
                                     />
                                 </div>
                                 <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estatus</label>
+                                    <select
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                        value={formData.status}
+                                        onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                    >
+                                        <option value="OPERATIONAL">Operativo</option>
+                                        <option value="MAINTENANCE">Mantenimiento</option>
+                                        <option value="OUT_OF_SERVICE">Fuera de Servicio</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {editingForklift && editingForklift.internalId && (
+                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Código QR</p>
+                                        <p className="font-mono text-sm font-bold text-slate-700">{editingForklift.internalId}</p>
+                                    </div>
+                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                        {/* Placeholder for QR Code generation library or image */}
+                                        <div className="w-10 h-10 bg-slate-900 flex items-center justify-center text-white text-[8px] font-bold">
+                                            QR
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ubicación</label>
                                     <select
                                         required
@@ -190,9 +332,6 @@ function ForkliftsListContent() {
                                         ))}
                                     </select>
                                 </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Marca</label>
                                     <input
@@ -215,16 +354,18 @@ function ForkliftsListContent() {
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Número de Serie</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                    value={formData.serial_number}
-                                    onChange={e => setFormData({ ...formData, serial_number: e.target.value })}
-                                />
-                            </div>
+                            {!editingForklift && (
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Número de Serie</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                        value={formData.serial_number}
+                                        onChange={e => setFormData({ ...formData, serial_number: e.target.value })}
+                                    />
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -273,7 +414,7 @@ function ForkliftsListContent() {
                                 className="w-full bg-primary text-white py-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg shadow-blue-200 hover:shadow-xl hover:translate-y-[-2px] transition-all flex items-center justify-center gap-2 mt-4"
                             >
                                 <Save size={18} />
-                                Guardar y Generar QR
+                                {editingForklift ? 'Actualizar Montacargas' : 'Guardar y Generar QR'}
                             </button>
                         </form>
                     </motion.div>

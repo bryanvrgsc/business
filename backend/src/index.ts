@@ -186,6 +186,52 @@ app.get('/api/client-locations', async (c) => {
     }
 });
 
+// PATCH /api/forklifts/:id (Update Forklift)
+app.patch('/api/forklifts/:id', async (c) => {
+    const id = c.req.param('id');
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const {
+        model, brand, serial_number, fuel_type,
+        current_hours, year, location_id, image, status
+    } = body;
+
+    try {
+        await client.connect();
+
+        // Dynamic update query
+        const fields = [];
+        const values = [];
+        let idx = 1;
+
+        if (model) { fields.push(`model = $${idx++}`); values.push(model); }
+        if (brand) { fields.push(`brand = $${idx++}`); values.push(brand); }
+        if (serial_number) { fields.push(`serial_number = $${idx++}`); values.push(serial_number); }
+        if (fuel_type) { fields.push(`fuel_type = $${idx++}`); values.push(fuel_type); }
+        if (current_hours !== undefined) { fields.push(`current_hours = $${idx++}`); values.push(current_hours); }
+        if (year) { fields.push(`year = $${idx++}`); values.push(year); }
+        if (location_id) { fields.push(`location_id = $${idx++}`); values.push(location_id); }
+        if (image) { fields.push(`image = $${idx++}`); values.push(image); }
+        if (status) { fields.push(`operational_status = $${idx++}`); values.push(status); } // Remapping status to operational_status
+
+        if (fields.length === 0) return c.json({ message: 'No fields to update' });
+
+        values.push(id);
+        const query = `
+            UPDATE forklifts 
+            SET ${fields.join(', ')} 
+            WHERE id = $${idx}
+        `;
+
+        await client.query(query, values);
+        return c.json({ message: 'Forklift updated successfully' });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
 // -----------------------------------------------------------------
 // Endpoint: GET /api/tickets
 // -----------------------------------------------------------------
@@ -194,9 +240,13 @@ app.get('/api/tickets', async (c) => {
     try {
         await client.connect();
         const res = await client.query(`
-            SELECT t.*, f.internal_id as forklift_internal_id, f.model as forklift_model 
+            SELECT t.*, 
+                   f.internal_id as forklift_internal_id, 
+                   f.model as forklift_model,
+                   u.full_name as assigned_to_name
             FROM maintenance_tickets t
             JOIN forklifts f ON t.forklift_id = f.id
+            LEFT JOIN users u ON t.assigned_to = u.id
             ORDER BY t.created_at DESC
         `);
         return c.json(res.rows);
@@ -255,12 +305,51 @@ app.patch('/api/tickets/:id/status', async (c) => {
         } else {
             await client.query(`
                 UPDATE maintenance_tickets 
-                SET status = $1, updated_at = NOW()
+                SET status = COALESCE($1, status),
+                    updated_at = NOW()
                 WHERE id = $2
             `, [status, id]);
         }
-
         return c.json({ message: 'Ticket updated' });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// PATCH /api/inventory/:id (Update Part)
+app.patch('/api/inventory/:id', async (c) => {
+    const id = c.req.param('id');
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const { part_number, name, current_stock, min_stock, unit_cost, supplier } = body;
+
+    try {
+        await client.connect();
+
+        const fields = [];
+        const values = [];
+        let idx = 1;
+
+        if (part_number) { fields.push(`part_number = $${idx++}`); values.push(part_number); }
+        if (name) { fields.push(`name = $${idx++}`); values.push(name); }
+        if (current_stock !== undefined) { fields.push(`current_stock = $${idx++}`); values.push(current_stock); }
+        if (min_stock !== undefined) { fields.push(`min_stock = $${idx++}`); values.push(min_stock); }
+        if (unit_cost !== undefined) { fields.push(`unit_cost = $${idx++}`); values.push(unit_cost); }
+        if (supplier) { fields.push(`supplier = $${idx++}`); values.push(supplier); }
+
+        if (fields.length === 0) return c.json({ message: 'No fields to update' });
+
+        values.push(id);
+        const query = `
+            UPDATE parts_inventory 
+            SET ${fields.join(', ')} 
+            WHERE id = $${idx}
+        `;
+
+        await client.query(query, values);
+        return c.json({ message: 'Part updated successfully' });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     } finally {
@@ -279,15 +368,22 @@ app.get('/api/schedules', async (c) => {
     const user = c.get('user');
     const client = getDb(c.env);
 
-    const result = await client.query(`
-        SELECT ps.*, f.internal_id as forklift_name
-        FROM preventive_schedules ps
-        LEFT JOIN forklifts f ON ps.forklift_id = f.id
-        WHERE ps.client_id = $1 AND ps.is_active = TRUE
-        ORDER BY ps.next_due_at ASC
-    `, [user.client_id]);
+    try {
+        await client.connect();
+        const result = await client.query(`
+            SELECT ps.*, f.internal_id as forklift_name
+            FROM preventive_schedules ps
+            LEFT JOIN forklifts f ON ps.forklift_id = f.id
+            WHERE ps.client_id = $1 AND ps.is_active = TRUE
+            ORDER BY ps.next_due_at ASC
+        `, [user.client_id]);
 
-    return c.json(result.rows);
+        return c.json(result.rows);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
 });
 
 // POST /api/schedules
@@ -323,6 +419,47 @@ app.post('/api/schedules', async (c) => {
         `, [id, user.client_id, forklift_id, target_model, task_name, frequency_type, frequency_value, next_due_at.toISOString(), next_due_hours]);
 
         return c.json({ message: 'Schedule created', id });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// PATCH /api/schedules/:id (Update Schedule)
+app.patch('/api/schedules/:id', async (c) => {
+    const id = c.req.param('id');
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const { forklift_id, task_name, frequency_type, frequency_value, target_model, is_active } = body;
+
+    try {
+        await client.connect();
+
+        const fields = [];
+        const values = [];
+        let idx = 1;
+
+        if (forklift_id !== undefined) { fields.push(`forklift_id = $${idx++}`); values.push(forklift_id || null); }
+        if (task_name) { fields.push(`task_name = $${idx++}`); values.push(task_name); }
+        if (frequency_type) { fields.push(`frequency_type = $${idx++}`); values.push(frequency_type); }
+        if (frequency_value) { fields.push(`frequency_value = $${idx++}`); values.push(frequency_value); }
+        if (target_model !== undefined) { fields.push(`target_model = $${idx++}`); values.push(target_model || null); }
+        if (is_active !== undefined) { fields.push(`is_active = $${idx++}`); values.push(is_active); }
+
+        if (fields.length === 0) return c.json({ message: 'No fields to update' });
+
+        values.push(id);
+        const query = `
+            UPDATE preventive_schedules 
+            SET ${fields.join(', ')} 
+            WHERE id = $${idx}
+        `;
+
+        await client.query(query, values);
+        return c.json({ message: 'Schedule updated successfully' });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
     } finally {
         try { await client.end(); } catch { }
     }
@@ -355,7 +492,7 @@ app.get('/api/kpis', async (c) => {
         // 2. MTTR (Mean Time To Repair) - avg hours between created_at and resolved_at
         const mttrResult = await client.query(`
             SELECT 
-                COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600), 0)::float as mttr_hours
+                COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))/3600), 0)::float as mttr_hours
             FROM maintenance_tickets mt
             JOIN forklifts f ON mt.forklift_id = f.id
             WHERE f.client_id = $1 AND mt.resolved_at IS NOT NULL
@@ -409,9 +546,14 @@ app.get('/api/kpis', async (c) => {
                 tickets_with_costs: costsResult.rows[0]?.tickets_with_costs || 0
             },
             tickets_per_month: ticketsPerMonth.rows,
-            fleet: fleetStatus.rows
+            fleet_status: fleetStatus.rows.reduce((acc: any, r: any) => {
+                acc[r.operational_status] = r.count;
+                return acc;
+            }, {})
         });
 
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
     } finally {
         try { await client.end(); } catch { }
     }
@@ -433,7 +575,7 @@ app.get('/api/inventory', async (c) => {
             SELECT * FROM parts_inventory
             WHERE client_id = $1
             ORDER BY name ASC
-        `, [user.client_id]);
+                `, [user.client_id]);
         return c.json(res.rows);
     } finally {
         try { await client.end(); } catch { }
@@ -451,33 +593,10 @@ app.post('/api/inventory', async (c) => {
     try {
         await client.connect();
         await client.query(`
-            INSERT INTO parts_inventory (id, part_number, name, current_stock, min_stock, unit_cost, supplier, client_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `, [id, part_number, name, current_stock || 0, min_stock || 1, unit_cost || 0, supplier, user.client_id]);
+            INSERT INTO parts_inventory(id, part_number, name, current_stock, min_stock, unit_cost, supplier, client_id)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+                    `, [id, part_number, name, current_stock || 0, min_stock || 1, unit_cost || 0, supplier, user.client_id]);
         return c.json({ message: 'Part added', id });
-    } finally {
-        try { await client.end(); } catch { }
-    }
-});
-
-// PATCH /api/inventory/:id (Update stock)
-app.patch('/api/inventory/:id', async (c) => {
-    const id = c.req.param('id');
-    const user = c.get('user');
-    const client = getDb(c.env);
-    const body = await c.req.json();
-    const { current_stock, unit_cost } = body;
-
-    try {
-        await client.connect();
-        await client.query(`
-            UPDATE parts_inventory 
-            SET current_stock = COALESCE($1, current_stock), 
-                unit_cost = COALESCE($2, unit_cost),
-                updated_at = NOW()
-            WHERE id = $3 AND client_id = $4
-        `, [current_stock, unit_cost, id, user.client_id]);
-        return c.json({ message: 'Part updated' });
     } finally {
         try { await client.end(); } catch { }
     }
@@ -493,7 +612,7 @@ app.get('/api/tickets/:id/costs', async (c) => {
             SELECT * FROM ticket_costs
             WHERE ticket_id = $1
             ORDER BY created_at DESC
-        `, [ticketId]);
+                `, [ticketId]);
         return c.json(res.rows);
     } finally {
         try { await client.end(); } catch { }
@@ -512,9 +631,9 @@ app.post('/api/tickets/:id/costs', async (c) => {
     try {
         await client.connect();
         await client.query(`
-            INSERT INTO ticket_costs (id, ticket_id, cost_type, description, quantity, unit_cost, total_cost, is_billable)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `, [id, ticketId, cost_type, description, quantity || 1, unit_cost, total_cost, is_billable !== false]);
+            INSERT INTO ticket_costs(id, ticket_id, cost_type, description, quantity, unit_cost, total_cost, is_billable)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+                    `, [id, ticketId, cost_type, description, quantity || 1, unit_cost, total_cost, is_billable !== false]);
         return c.json({ message: 'Cost added', id, total_cost });
     } finally {
         try { await client.end(); } catch { }
@@ -544,9 +663,9 @@ app.post('/api/forklifts', async (c) => {
     try {
         await client.connect();
         await client.query(`
-            INSERT INTO forklifts (id, internal_id, qr_code_payload, model, brand, serial_number, year, client_id, location_id, fuel_type, current_hours, image_url)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        `, [id, internal_id, qr_code_payload, model, brand, serial_number, year, user.client_id, location_id, fuel_type, current_hours, image]);
+            INSERT INTO forklifts(id, internal_id, qr_code_payload, model, brand, serial_number, year, client_id, location_id, fuel_type, current_hours, image_url)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    `, [id, internal_id, qr_code_payload, model, brand, serial_number, year, user.client_id, location_id, fuel_type, current_hours, image]);
 
         return c.json({ message: 'Forklift created', id, qr_code_payload });
     } finally {
@@ -566,7 +685,7 @@ app.get('/api/forklifts', async (c) => {
             FROM forklifts 
             WHERE client_id = $1
             ORDER BY internal_id ASC
-        `, [user.client_id]);
+                `, [user.client_id]);
         return c.json(res.rows);
     } finally {
         try { await client.end(); } catch { }
@@ -587,7 +706,7 @@ app.get('/api/users', async (c) => {
             FROM users 
             WHERE client_id = $1
             ORDER BY created_at DESC
-        `, [user.client_id]);
+                `, [user.client_id]);
         return c.json(res.rows);
     } finally {
         try { await client.end(); } catch { }
@@ -611,9 +730,9 @@ app.post('/api/users', async (c) => {
     try {
         await client.connect();
         await client.query(`
-            INSERT INTO users (id, full_name, email, phone, password_hash, role, client_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-        `, [id, full_name, email, phone || null, password_hash, role, user.client_id]);
+            INSERT INTO users(id, full_name, email, phone, password_hash, role, client_id)
+            VALUES($1, $2, $3, $4, $5, $6, $7)
+                    `, [id, full_name, email, phone || null, password_hash, role, user.client_id]);
 
         return c.json({ message: 'User created', id });
     } finally {
@@ -639,7 +758,7 @@ app.put('/api/upload', async (c) => {
         }
 
         // Generate unique key
-        const key = `${crypto.randomUUID()}-${file.name}`;
+        const key = `${crypto.randomUUID()} - ${file.name}`;
 
         // Upload to R2
         await c.env.R2.put(key, await file.arrayBuffer(), {
@@ -650,7 +769,7 @@ app.put('/api/upload', async (c) => {
 
         return c.json({
             message: 'Upload successful',
-            url: `/api/images/${key}`,
+            url: `/ api / images / ${key}`,
             key: key
         });
 
@@ -697,19 +816,19 @@ export default {
             const dueSchedules = await client.query(`
                 SELECT * FROM preventive_schedules 
                 WHERE is_active = TRUE AND next_due_at <= NOW()
-            `);
+                `);
 
             for (const schedule of dueSchedules.rows) {
                 console.log(`Processing schedule: ${schedule.id} - ${schedule.task_name}`);
 
                 // Create Ticket
                 const ticketId = crypto.randomUUID();
-                const ticketNumber = `PM-${Date.now().toString().slice(-6)}`;
+                const ticketNumber = `PM - ${Date.now().toString().slice(-6)}`;
 
                 await client.query(`
-                    INSERT INTO maintenance_tickets (id, ticket_number, forklift_id, schedule_id, status, priority, description, created_by, created_at)
-                    VALUES ($1, $2, $3, $4, 'OPEN', 'MEDIA', $5, 'SYSTEM', NOW())
-                `, [ticketId, ticketNumber, schedule.forklift_id, schedule.id, `Mantenimiento Preventivo: ${schedule.task_name}`]);
+                    INSERT INTO maintenance_tickets(id, ticket_number, forklift_id, schedule_id, status, priority, description, created_by, created_at)
+                    VALUES($1, $2, $3, $4, 'OPEN', 'MEDIA', $5, 'SYSTEM', NOW())
+                    `, [ticketId, ticketNumber, schedule.forklift_id, schedule.id, `Mantenimiento Preventivo: ${schedule.task_name}`]);
 
                 // Update Schedule (Next Due Date)
                 let nextDate = new Date();

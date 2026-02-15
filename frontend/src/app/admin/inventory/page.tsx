@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchInventory, createPart, Part } from '@/lib/api';
+import { fetchInventory, createPart, updatePart, Part } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Save, X, Package, AlertTriangle } from 'lucide-react';
@@ -10,6 +10,7 @@ function InventoryContent() {
     const router = useRouter();
     const [parts, setParts] = useState<Part[]>([]);
     const [loading, setLoading] = useState(true);
+    const [editingPart, setEditingPart] = useState<Part | null>(null);
     const [showModal, setShowModal] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -24,6 +25,7 @@ function InventoryContent() {
     useEffect(() => { loadParts(); }, []);
 
     const loadParts = async () => {
+        setLoading(true);
         try {
             const data = await fetchInventory();
             setParts(data);
@@ -34,15 +36,35 @@ function InventoryContent() {
         }
     };
 
+    const handleEdit = (part: Part) => {
+        setEditingPart(part);
+        setFormData({
+            part_number: part.part_number,
+            name: part.name,
+            current_stock: part.current_stock,
+            min_stock: part.min_stock,
+            unit_cost: part.unit_cost,
+            supplier: part.supplier || ''
+        });
+        setShowModal(true);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await createPart(formData);
+            if (editingPart) {
+                await updatePart(editingPart.id, formData);
+                alert('Refacción actualizada');
+            } else {
+                await createPart(formData);
+                alert('Refacción creada');
+            }
             setShowModal(false);
+            setEditingPart(null);
             loadParts();
             setFormData({ part_number: '', name: '', current_stock: 0, min_stock: 1, unit_cost: 0, supplier: '' });
         } catch (err) {
-            alert('Error al agregar refacción');
+            alert('Error al guardar refacción');
         }
     };
 
@@ -64,7 +86,14 @@ function InventoryContent() {
                         <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">Refacciones</p>
                     </div>
                 </div>
-                <button onClick={() => setShowModal(true)} className="p-3 bg-primary text-white rounded-2xl shadow-lg shadow-blue-200 interactive">
+                <button
+                    onClick={() => {
+                        setEditingPart(null);
+                        setFormData({ part_number: '', name: '', current_stock: 0, min_stock: 1, unit_cost: 0, supplier: '' });
+                        setShowModal(true);
+                    }}
+                    className="p-3 bg-primary text-white rounded-2xl shadow-lg shadow-blue-200 interactive"
+                >
                     <Plus size={24} />
                 </button>
             </div>
@@ -83,6 +112,7 @@ function InventoryContent() {
                             transition={{ delay: idx * 0.05 }}
                             key={part.id}
                             className="premium-card p-5"
+                            onClick={() => handleEdit(part)}
                         >
                             <div className="flex justify-between items-start mb-2">
                                 <div>
@@ -90,8 +120,8 @@ function InventoryContent() {
                                     <p className="text-xs text-slate-400 font-bold">{part.part_number}</p>
                                 </div>
                                 <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${part.current_stock <= part.min_stock
-                                        ? 'bg-red-50 text-red-600 border-red-100'
-                                        : 'bg-green-50 text-green-600 border-green-100'
+                                    ? 'bg-red-50 text-red-600 border-red-100'
+                                    : 'bg-green-50 text-green-600 border-green-100'
                                     }`}>
                                     {part.current_stock} uds
                                 </span>
@@ -124,7 +154,9 @@ function InventoryContent() {
                             <X size={20} />
                         </button>
 
-                        <h2 className="text-xl font-black text-slate-900 mb-6">Nueva Refacción</h2>
+                        <h2 className="text-xl font-black text-slate-900 mb-6">
+                            {editingPart ? 'Editar Refacción' : 'Nueva Refacción'}
+                        </h2>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
@@ -163,7 +195,7 @@ function InventoryContent() {
                             </div>
 
                             <button type="submit" className="w-full bg-primary text-white py-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-lg shadow-blue-200 hover:shadow-xl hover:translate-y-[-2px] transition-all flex items-center justify-center gap-2 mt-4">
-                                <Save size={18} /> Guardar Refacción
+                                <Save size={18} /> {editingPart ? 'Actualizar' : 'Guardar'} Refacción
                             </button>
                         </form>
                     </motion.div>

@@ -1,14 +1,19 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://cmms-backend.bryanvrgsc.workers.dev';
 
+// Forklifts
 export interface Forklift {
     id: string;
     internalId: string;
-    model: string;
     brand: string;
-    status: 'OPERATIONAL' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
+    model: string;
     location: string;
-    nextMaintenance: string;
+    status: 'OPERATIONAL' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
+    serialNumber?: string;
+    fuelType?: 'GAS_LP' | 'ELECTRIC' | 'DIESEL';
+    currentHours?: number;
+    year?: number;
     image?: string;
+    nextServiceHours?: number;
 }
 
 export interface ClientLocation {
@@ -190,6 +195,8 @@ export interface Ticket {
     priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     description: string;
     created_at: string;
+    assigned_to?: string;
+    assigned_to_name?: string;
 }
 
 export async function fetchTickets(): Promise<Ticket[]> {
@@ -216,7 +223,7 @@ export async function createTicket(data: any): Promise<void> {
     });
 }
 
-export async function updateTicketStatus(id: string, status: string): Promise<void> {
+export async function updateTicketStatus(id: string, status: string, assignedTo?: string): Promise<void> {
     const token = ensureAuth();
 
     await fetch(`${API_URL}/api/tickets/${id}/status`, {
@@ -225,7 +232,7 @@ export async function updateTicketStatus(id: string, status: string): Promise<vo
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, assigned_to: assignedTo })
     });
 }
 
@@ -244,12 +251,15 @@ export interface MaintenanceSchedule {
     next_due_hours?: number;
     is_active: boolean;
     created_at: string;
+    target_model?: string;
 }
+
+export type Schedule = MaintenanceSchedule;
 
 export async function fetchSchedules(): Promise<MaintenanceSchedule[]> {
     const token = ensureAuth();
 
-    const res = await fetch(`${API_URL}/api/maintenance/schedules`, {
+    const res = await fetch(`${API_URL}/api/schedules`, {
         headers: {
             'Authorization': `Bearer ${token}`
         }
@@ -262,7 +272,37 @@ export async function fetchSchedules(): Promise<MaintenanceSchedule[]> {
 export async function createSchedule(data: any): Promise<void> {
     const token = ensureAuth();
 
-    await fetch(`${API_URL}/api/maintenance/schedules`, {
+    const res = await fetch(`${API_URL}/api/schedules`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (!res.ok) throw new Error('Error creating schedule');
+}
+
+export async function updateSchedule(id: string, data: any): Promise<void> {
+    const token = ensureAuth();
+    const res = await fetch(`${API_URL}/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (!res.ok) throw new Error('Error updating schedule');
+}
+
+// Admin - Forklifts
+export async function createForklift(data: any): Promise<void> {
+    const token = ensureAuth();
+
+    await fetch(`${API_URL}/api/forklifts`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -272,12 +312,11 @@ export async function createSchedule(data: any): Promise<void> {
     });
 }
 
-// Admin - Forklifts
-export async function createForklift(data: any): Promise<void> {
+export async function updateForklift(id: string, data: any): Promise<void> {
     const token = ensureAuth();
 
-    await fetch(`${API_URL}/api/forklifts`, {
-        method: 'POST',
+    await fetch(`${API_URL}/api/forklifts/${id}`, {
+        method: 'PATCH',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
@@ -337,6 +376,18 @@ export async function createPart(data: any): Promise<void> {
     await fetch(`${API_URL}/api/inventory`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
+export async function updatePart(id: string, data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/inventory/${id}`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(data)
     });
 }
