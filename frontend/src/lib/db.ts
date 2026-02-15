@@ -9,6 +9,8 @@ export interface LocalReport {
     capturedAt: string;
     syncedAt?: string;
     hasCriticalFailure: boolean;
+    gpsLatitude?: number;
+    gpsLongitude?: number;
 }
 
 export class CMMSDatabase extends Dexie {

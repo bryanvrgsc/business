@@ -56,7 +56,10 @@ app.get('/api/forklifts/:id', async (c) => {
         await client.connect();
         // Try to find by ID or Internal ID (QR Code)
         const res = await client.query(
-            `SELECT * FROM forklifts WHERE id = $1 OR internal_id = $1 OR qr_code_payload = $1`,
+            `SELECT f.*, cl.name as location_name 
+             FROM forklifts f
+             LEFT JOIN client_locations cl ON f.location_id = cl.id
+             WHERE f.id = $1 OR f.internal_id = $1 OR f.qr_code_payload = $1`,
             [id]
         );
 
@@ -72,7 +75,7 @@ app.get('/api/forklifts/:id', async (c) => {
             model: f.model,
             brand: f.brand,
             status: f.operational_status, // OPERATIONAL, MAINTENANCE, OUT_OF_SERVICE
-            location: 'Planta Principal', // TODO: Join with locations table
+            location: f.location_name || 'Sin ubicaciónasignada',
             nextMaintenance: '2024-03-01', // TODO: Calculate from schedules
             image: '/forklift-placeholder.png' // TODO: R2 Image
         });
@@ -90,7 +93,7 @@ app.post('/api/sync', async (c) => {
     const user = c.get('user');
     const report = await c.req.json();
     // @ts-ignore
-    const { forkliftId, templateId, answers, hasCriticalFailure, capturedAt } = report;
+    const { forkliftId, templateId, answers, hasCriticalFailure, capturedAt, gpsLatitude, gpsLongitude } = report;
 
     console.log(`Sync request from user ${user.sub} (Client: ${user.client_id})`);
 
@@ -113,7 +116,8 @@ app.post('/api/sync', async (c) => {
             templateId,
             capturedAt || new Date().toISOString(),
             hasCriticalFailure || false,
-            0.0, 0.0
+            gpsLatitude || 0.0,
+            gpsLongitude || 0.0
         ]);
 
         // 2. Insert Answers
@@ -184,18 +188,30 @@ app.get('/api/tickets', async (c) => {
 // -----------------------------------------------------------------
 app.patch('/api/tickets/:id/status', async (c) => {
     const id = c.req.param('id');
-    const { status } = await c.req.json(); // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+    const { status, assigned_to } = await c.req.json();
     const client = getDb(c.env);
 
     try {
         await client.connect();
-        await client.query(`
-            UPDATE maintenance_tickets 
-            SET status = $1, updated_at = NOW()
-            WHERE id = $2
-        `, [status, id]);
 
-        return c.json({ message: 'Ticket status updated' });
+        if (assigned_to) {
+            await client.query(`
+                UPDATE maintenance_tickets 
+                SET status = COALESCE($1, status), 
+                    assigned_to = $2,
+                    assigned_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = $3
+            `, [status, assigned_to, id]);
+        } else {
+            await client.query(`
+                UPDATE maintenance_tickets 
+                SET status = $1, updated_at = NOW()
+                WHERE id = $2
+            `, [status, id]);
+        }
+
+        return c.json({ message: 'Ticket updated' });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     } finally {
@@ -384,6 +400,7 @@ app.post('/api/inventory', async (c) => {
 // PATCH /api/inventory/:id (Update stock)
 app.patch('/api/inventory/:id', async (c) => {
     const id = c.req.param('id');
+    const user = c.get('user');
     const client = getDb(c.env);
     const body = await c.req.json();
     const { current_stock, unit_cost } = body;
@@ -395,8 +412,8 @@ app.patch('/api/inventory/:id', async (c) => {
             SET current_stock = COALESCE($1, current_stock), 
                 unit_cost = COALESCE($2, unit_cost),
                 updated_at = NOW()
-            WHERE id = $3
-        `, [current_stock, unit_cost, id]);
+            WHERE id = $3 AND client_id = $4
+        `, [current_stock, unit_cost, id, user.client_id]);
         return c.json({ message: 'Part updated' });
     } finally {
         try { await client.end(); } catch { }

@@ -20,6 +20,17 @@ function ChecklistFormContent() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploadingState, setUploadingState] = useState<Record<string, boolean>>({});
+    const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
+
+    useEffect(() => {
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                (err) => console.error('GPS Error:', err),
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        }
+    }, []);
 
     useEffect(() => {
         async function loadData() {
@@ -88,7 +99,9 @@ function ChecklistFormContent() {
                 answers,
                 evidence: [],
                 capturedAt: new Date().toISOString(),
-                hasCriticalFailure: hasCritical
+                hasCriticalFailure: hasCritical,
+                gpsLatitude: gps?.lat || 0,
+                gpsLongitude: gps?.lng || 0
             });
 
             if ('serviceWorker' in navigator && 'SyncManager' in window) {

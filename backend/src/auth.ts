@@ -38,6 +38,9 @@ auth.post('/login', async (c) => {
             }
         }
 
+        // Update last_login_at
+        await client.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id])
+
         const payload = {
             sub: user.id,
             role: user.role,
