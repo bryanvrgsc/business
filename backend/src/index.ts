@@ -163,6 +163,30 @@ app.post('/api/sync', async (c) => {
 });
 
 // -----------------------------------------------------------------
+// Endpoint: GET /api/client-locations
+// -----------------------------------------------------------------
+app.get('/api/client-locations', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+
+    try {
+        await client.connect();
+        const res = await client.query(`
+            SELECT id, name
+            FROM client_locations
+            WHERE client_id = $1
+            ORDER BY name ASC
+        `, [user.client_id]);
+
+        return c.json(res.rows);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// -----------------------------------------------------------------
 // Endpoint: GET /api/tickets
 // -----------------------------------------------------------------
 app.get('/api/tickets', async (c) => {
@@ -176,6 +200,31 @@ app.get('/api/tickets', async (c) => {
             ORDER BY t.created_at DESC
         `);
         return c.json(res.rows);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// POST /api/tickets (Create Ticket Manually)
+app.post('/api/tickets', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+    const body = await c.req.json();
+    const { forklift_id, priority, description } = body;
+
+    const id = crypto.randomUUID();
+    const ticketNumber = `TKT-${Date.now().toString().slice(-6)}`;
+
+    try {
+        await client.connect();
+        await client.query(`
+            INSERT INTO maintenance_tickets (id, ticket_number, forklift_id, status, priority, description, created_by, created_at)
+            VALUES ($1, $2, $3, 'OPEN', $4, $5, $6, NOW())
+        `, [id, ticketNumber, forklift_id, priority || 'MEDIUM', description, user.sub]);
+
+        return c.json({ message: 'Ticket created', id, ticketNumber });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     } finally {
@@ -250,19 +299,33 @@ app.post('/api/schedules', async (c) => {
     const { forklift_id, task_name, frequency_type, frequency_value, target_model } = body;
 
     const id = crypto.randomUUID();
-    // Calculate initial next_due_at based on frequency
     let next_due_at = new Date();
-    if (frequency_type === 'DAYS') {
-        next_due_at.setDate(next_due_at.getDate() + parseInt(frequency_value));
+    let next_due_hours = 0;
+
+    try {
+        await client.connect();
+
+        if (frequency_type === 'DAYS') {
+            next_due_at.setDate(next_due_at.getDate() + parseInt(frequency_value));
+        } else if (frequency_type === 'HOURS' && forklift_id) {
+            // Fetch current hours
+            const fRes = await client.query('SELECT current_hours FROM forklifts WHERE id = $1', [forklift_id]);
+            const currentHours = parseFloat(fRes.rows[0]?.current_hours || 0);
+            next_due_hours = currentHours + parseFloat(frequency_value);
+            // Set next_due_at to far future or null? Schema allows null? Checking schema...
+            // Let's set it to today + 1 year just in case query requires it, or handle in query
+            next_due_at.setFullYear(next_due_at.getFullYear() + 1);
+        }
+
+        await client.query(`
+            INSERT INTO preventive_schedules (id, client_id, forklift_id, target_model, task_name, frequency_type, frequency_value, next_due_at, next_due_hours)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [id, user.client_id, forklift_id, target_model, task_name, frequency_type, frequency_value, next_due_at.toISOString(), next_due_hours]);
+
+        return c.json({ message: 'Schedule created', id });
+    } finally {
+        try { await client.end(); } catch { }
     }
-    // Note: HOURS logic would require syncing current hours from forklifts
-
-    await client.query(`
-        INSERT INTO preventive_schedules (id, client_id, forklift_id, target_model, task_name, frequency_type, frequency_value, next_due_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    `, [id, user.client_id, forklift_id, target_model, task_name, frequency_type, frequency_value, next_due_at.toISOString()]);
-
-    return c.json({ message: 'Schedule created', id });
 });
 
 
@@ -472,7 +535,7 @@ app.post('/api/forklifts', async (c) => {
 
     const client = getDb(c.env);
     const body = await c.req.json();
-    const { internal_id, model, brand, serial_number, year, location_id } = body;
+    const { internal_id, model, brand, serial_number, year, location_id, fuel_type, current_hours, image } = body;
 
     const id = crypto.randomUUID();
     // Simple QR payload: URL or just ID. Let's use internal_id for readability in this MVP
@@ -481,11 +544,30 @@ app.post('/api/forklifts', async (c) => {
     try {
         await client.connect();
         await client.query(`
-            INSERT INTO forklifts (id, internal_id, qr_code_payload, model, brand, serial_number, year, client_id, location_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, [id, internal_id, qr_code_payload, model, brand, serial_number, year, user.client_id, location_id]);
+            INSERT INTO forklifts (id, internal_id, qr_code_payload, model, brand, serial_number, year, client_id, location_id, fuel_type, current_hours, image_url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        `, [id, internal_id, qr_code_payload, model, brand, serial_number, year, user.client_id, location_id, fuel_type, current_hours, image]);
 
         return c.json({ message: 'Forklift created', id, qr_code_payload });
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
+// GET /api/forklifts (List Forklifts)
+app.get('/api/forklifts', async (c) => {
+    const user = c.get('user');
+    const client = getDb(c.env);
+
+    try {
+        await client.connect();
+        const res = await client.query(`
+            SELECT id, internal_id, model, brand, operational_status, image_url
+            FROM forklifts 
+            WHERE client_id = $1
+            ORDER BY internal_id ASC
+        `, [user.client_id]);
+        return c.json(res.rows);
     } finally {
         try { await client.end(); } catch { }
     }
@@ -501,7 +583,7 @@ app.get('/api/users', async (c) => {
     try {
         await client.connect();
         const res = await client.query(`
-            SELECT id, full_name, email, role, is_active, last_login_at 
+            SELECT id, full_name, email, phone, role, is_active, last_login_at 
             FROM users 
             WHERE client_id = $1
             ORDER BY created_at DESC
@@ -519,7 +601,7 @@ app.post('/api/users', async (c) => {
 
     const client = getDb(c.env);
     const body = await c.req.json();
-    const { full_name, email, password, role } = body;
+    const { full_name, email, phone, password, role } = body;
 
     const id = crypto.randomUUID();
     // Simple hash for now (in prod: bcrypt)
@@ -529,9 +611,9 @@ app.post('/api/users', async (c) => {
     try {
         await client.connect();
         await client.query(`
-            INSERT INTO users (id, full_name, email, password_hash, role, client_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
-        `, [id, full_name, email, password_hash, role, user.client_id]);
+            INSERT INTO users (id, full_name, email, phone, password_hash, role, client_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [id, full_name, email, phone || null, password_hash, role, user.client_id]);
 
         return c.json({ message: 'User created', id });
     } finally {
