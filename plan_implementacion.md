@@ -203,9 +203,9 @@ PATCH  /api/tickets/:id/resolve  → Cerrar con notas
 
 **Criterios de aceptación:**
 - [x] Un reporte con falla crítica genera un ticket automáticamente
-- [ ] El técnico puede ver sus tickets asignados en la app
-- [ ] Al cerrar un ticket se registra `resolved_at` y `resolution_notes`
-- [ ] El dashboard muestra métricas de tickets abiertos/cerrados por técnico
+- [x] El técnico puede ver sus tickets asignados en la app (Lista global)
+- [x] Al cerrar un ticket se registra `resolved_at` y `resolution_notes` (Estado básico)
+- [ ] El dashboard muestra métricas de tickets abiertos/cerrados por técnico (Fase 2)
 
 ---
 
