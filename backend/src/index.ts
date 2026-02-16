@@ -3,6 +3,11 @@ import { cors } from 'hono/cors';
 import { Bindings, getDb } from './db';
 import auth from './auth';
 import { authMiddleware, UserPayload } from './middleware';
+import clients from './routes/clients';
+import locations from './routes/locations';
+import contracts from './routes/contracts';
+import checklists from './routes/checklists';
+import { ensureOnboardingPrerequisites, getOnboardingStatus } from './onboarding';
 
 const app = new Hono<{
     Bindings: Bindings,
@@ -45,10 +50,50 @@ app.get('/api/test-db', async (c) => {
 // Protected Routes
 app.use('/api/*', authMiddleware);
 
+app.route('/api/clients', clients);
+app.route('/api/client-locations', locations);
+app.route('/api/contracts', contracts);
+app.route('/api/checklists', checklists);
+
+const FAILED_ANSWER_VALUES = new Set(['NO', 'FAIL', 'FAILED', 'FALSE', '0']);
+
+const normalizeAnswerValue = (value: unknown): string => {
+    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+    if (value === null || value === undefined) return '';
+    return String(value).trim().toUpperCase();
+};
+
+const isFailedAnswer = (value: unknown): boolean => FAILED_ANSWER_VALUES.has(normalizeAnswerValue(value));
+
+// -----------------------------------------------------------------
+// Endpoint: GET /api/onboarding/status
+// -----------------------------------------------------------------
+app.get('/api/onboarding/status', async (c) => {
+    const user = c.get('user');
+    const requestedClientId = c.req.query('client_id');
+    const targetClientId = user.role === 'ADMIN' && requestedClientId ? requestedClientId : user.client_id;
+
+    if (!targetClientId) {
+        return c.json({ error: 'client_id is required' }, 400);
+    }
+
+    const client = getDb(c.env);
+    try {
+        await client.connect();
+        const status = await getOnboardingStatus(client, targetClientId);
+        return c.json(status);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    } finally {
+        try { await client.end(); } catch { }
+    }
+});
+
 // -----------------------------------------------------------------
 // Endpoint: GET /api/forklifts/:id
 // -----------------------------------------------------------------
 app.get('/api/forklifts/:id', async (c) => {
+    const user = c.get('user');
     const id = c.req.param('id');
     const client = getDb(c.env);
 
@@ -59,8 +104,9 @@ app.get('/api/forklifts/:id', async (c) => {
             `SELECT f.*, cl.name as location_name 
              FROM forklifts f
              LEFT JOIN client_locations cl ON f.location_id = cl.id
-             WHERE f.id = $1 OR f.internal_id = $1 OR f.qr_code_payload = $1`,
-            [id]
+             WHERE (f.id = $1 OR f.internal_id = $1 OR f.qr_code_payload = $1)
+               AND f.client_id = $2`,
+            [id, user.client_id]
         );
 
         if (res.rows.length === 0) {
@@ -91,9 +137,20 @@ app.get('/api/forklifts/:id', async (c) => {
 // -----------------------------------------------------------------
 app.post('/api/sync', async (c) => {
     const user = c.get('user');
-    const report = await c.req.json();
-    // @ts-ignore
+    const report = await c.req.json() as {
+        forkliftId?: string;
+        templateId?: string;
+        answers?: Record<string, unknown>;
+        hasCriticalFailure?: boolean;
+        capturedAt?: string;
+        gpsLatitude?: number;
+        gpsLongitude?: number;
+    };
     const { forkliftId, templateId, answers, hasCriticalFailure, capturedAt, gpsLatitude, gpsLongitude } = report;
+
+    if (!forkliftId) {
+        return c.json({ error: 'forkliftId is required' }, 400);
+    }
 
     console.log(`Sync request from user ${user.sub} (Client: ${user.client_id})`);
 
@@ -101,6 +158,48 @@ app.post('/api/sync', async (c) => {
 
     try {
         await client.connect();
+
+        const forkliftRes = await client.query(`
+            SELECT id
+            FROM forklifts
+            WHERE id = $1 AND client_id = $2
+            LIMIT 1
+        `, [forkliftId, user.client_id]);
+
+        if (forkliftRes.rows.length === 0) {
+            return c.json({ error: 'Forklift not found' }, 404);
+        }
+
+        let hasWarningFailure = false;
+        let hasCriticalFromAnswers = false;
+        const answerEntries = answers ? Object.entries(answers) : [];
+
+        if (answerEntries.length > 0) {
+            const questionIds = answerEntries.map(([questionId]) => questionId);
+            const severityRes = await client.query(`
+                SELECT id, severity_level
+                FROM checklist_questions
+                WHERE id = ANY($1::varchar[])
+            `, [questionIds]);
+
+            const severityByQuestion = new Map<string, string>();
+            for (const row of severityRes.rows) {
+                severityByQuestion.set(String(row.id), String(row.severity_level || 'INFO').toUpperCase());
+            }
+
+            for (const [questionId, value] of answerEntries) {
+                if (!isFailedAnswer(value)) continue;
+                const severity = severityByQuestion.get(questionId);
+                if (severity === 'CRITICAL_STOP') {
+                    hasCriticalFromAnswers = true;
+                } else if (severity === 'WARNING') {
+                    hasWarningFailure = true;
+                }
+            }
+        }
+
+        // Backward compatibility: keep old flag support if front sends only hasCriticalFailure.
+        const resolvedCritical = hasCriticalFromAnswers || Boolean(hasCriticalFailure);
 
         // Generate a new ID for the report
         const reportId = crypto.randomUUID();
@@ -115,14 +214,14 @@ app.post('/api/sync', async (c) => {
             user.sub,
             templateId,
             capturedAt || new Date().toISOString(),
-            hasCriticalFailure || false,
+            resolvedCritical,
             gpsLatitude || 0.0,
             gpsLongitude || 0.0
         ]);
 
         // 2. Insert Answers
-        if (answers) {
-            for (const [questionId, value] of Object.entries(answers)) {
+        if (answerEntries.length > 0) {
+            for (const [questionId, value] of answerEntries) {
                 await client.query(`
                     INSERT INTO report_answers (id, report_id, question_id, answer_value)
                     VALUES ($1, $2, $3, $4)
@@ -130,22 +229,28 @@ app.post('/api/sync', async (c) => {
             }
         }
 
-        // 3. Update Forklift Status if critical
-        if (hasCriticalFailure) {
+        // 3. Create maintenance ticket for WARNING and CRITICAL_STOP.
+        if (resolvedCritical || hasWarningFailure) {
+            const ticketId = crypto.randomUUID();
+            const ticketNumber = `TKT-${Date.now().toString().slice(-6)}`;
+            const priority = resolvedCritical ? 'HIGH' : 'MEDIUM';
+            const description = resolvedCritical
+                ? 'Falla crítica detectada en inspección'
+                : 'Falla de advertencia detectada en inspección';
+
+            await client.query(`
+                INSERT INTO maintenance_tickets (id, ticket_number, report_id, forklift_id, status, priority, description, created_by, created_at)
+                VALUES ($1, $2, $3, $4, 'OPEN', $5, $6, $7, $8)
+            `, [ticketId, ticketNumber, reportId, forkliftId, priority, description, user.sub, new Date().toISOString()]);
+        }
+
+        // 4. En paro crítico, bloquear equipo.
+        if (resolvedCritical) {
             await client.query(`
                 UPDATE forklifts 
                 SET operational_status = 'OUT_OF_SERVICE' 
                 WHERE id = $1
             `, [forkliftId]);
-
-            // 4. Auto-create Maintenance Ticket
-            const ticketId = crypto.randomUUID();
-            const ticketNumber = `TKT-${Date.now().toString().slice(-6)}`; // Simple TKT-123456 generation
-
-            await client.query(`
-                INSERT INTO maintenance_tickets (id, ticket_number, forklift_id, status, priority, description, created_by, created_at)
-                VALUES ($1, $2, $3, 'OPEN', 'HIGH', 'Falla crítica detectada en inspección', $4, $5)
-            `, [ticketId, ticketNumber, forkliftId, user.sub, new Date().toISOString()]);
         }
 
         return c.json({
@@ -188,6 +293,7 @@ app.get('/api/client-locations', async (c) => {
 
 // PATCH /api/forklifts/:id (Update Forklift)
 app.patch('/api/forklifts/:id', async (c) => {
+    const user = c.get('user');
     const id = c.req.param('id');
     const client = getDb(c.env);
     const body = await c.req.json();
@@ -199,9 +305,31 @@ app.patch('/api/forklifts/:id', async (c) => {
     try {
         await client.connect();
 
+        const forkliftRes = await client.query(`
+            SELECT id
+            FROM forklifts
+            WHERE id = $1 AND client_id = $2
+            LIMIT 1
+        `, [id, user.client_id]);
+        if (forkliftRes.rows.length === 0) {
+            return c.json({ error: 'Forklift not found' }, 404);
+        }
+
+        if (location_id) {
+            const locationRes = await client.query(`
+                SELECT id
+                FROM client_locations
+                WHERE id = $1 AND client_id = $2
+                LIMIT 1
+            `, [location_id, user.client_id]);
+            if (locationRes.rows.length === 0) {
+                return c.json({ error: 'Location not found for this client' }, 400);
+            }
+        }
+
         // Dynamic update query
-        const fields = [];
-        const values = [];
+        const fields: string[] = [];
+        const values: Array<string | number> = [];
         let idx = 1;
 
         if (model) { fields.push(`model = $${idx++}`); values.push(model); }
@@ -211,16 +339,16 @@ app.patch('/api/forklifts/:id', async (c) => {
         if (current_hours !== undefined) { fields.push(`current_hours = $${idx++}`); values.push(current_hours); }
         if (year) { fields.push(`year = $${idx++}`); values.push(year); }
         if (location_id) { fields.push(`location_id = $${idx++}`); values.push(location_id); }
-        if (image) { fields.push(`image = $${idx++}`); values.push(image); }
+        if (image) { fields.push(`image_url = $${idx++}`); values.push(image); }
         if (status) { fields.push(`operational_status = $${idx++}`); values.push(status); } // Remapping status to operational_status
 
         if (fields.length === 0) return c.json({ message: 'No fields to update' });
 
-        values.push(id);
+        values.push(id, user.client_id);
         const query = `
             UPDATE forklifts 
             SET ${fields.join(', ')} 
-            WHERE id = $${idx}
+            WHERE id = $${idx} AND client_id = $${idx + 1}
         `;
 
         await client.query(query, values);
@@ -236,6 +364,7 @@ app.patch('/api/forklifts/:id', async (c) => {
 // Endpoint: GET /api/tickets
 // -----------------------------------------------------------------
 app.get('/api/tickets', async (c) => {
+    const user = c.get('user');
     const client = getDb(c.env);
     try {
         await client.connect();
@@ -247,8 +376,9 @@ app.get('/api/tickets', async (c) => {
             FROM maintenance_tickets t
             JOIN forklifts f ON t.forklift_id = f.id
             LEFT JOIN users u ON t.assigned_to = u.id
+            WHERE f.client_id = $1
             ORDER BY t.created_at DESC
-        `);
+        `, [user.client_id]);
         return c.json(res.rows);
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
@@ -264,11 +394,27 @@ app.post('/api/tickets', async (c) => {
     const body = await c.req.json();
     const { forklift_id, priority, description } = body;
 
+    if (!forklift_id) {
+        return c.json({ error: 'forklift_id is required' }, 400);
+    }
+
     const id = crypto.randomUUID();
     const ticketNumber = `TKT-${Date.now().toString().slice(-6)}`;
 
     try {
         await client.connect();
+
+        const forkliftRes = await client.query(`
+            SELECT id
+            FROM forklifts
+            WHERE id = $1 AND client_id = $2
+            LIMIT 1
+        `, [forklift_id, user.client_id]);
+
+        if (forkliftRes.rows.length === 0) {
+            return c.json({ error: 'No existe montacargas para este cliente' }, 400);
+        }
+
         await client.query(`
             INSERT INTO maintenance_tickets (id, ticket_number, forklift_id, status, priority, description, created_by, created_at)
             VALUES ($1, $2, $3, 'OPEN', $4, $5, $6, NOW())
@@ -286,12 +432,36 @@ app.post('/api/tickets', async (c) => {
 // Endpoint: PATCH /api/tickets/:id/status
 // -----------------------------------------------------------------
 app.patch('/api/tickets/:id/status', async (c) => {
+    const user = c.get('user');
     const id = c.req.param('id');
     const { status, assigned_to } = await c.req.json();
     const client = getDb(c.env);
 
     try {
         await client.connect();
+
+        const ownershipRes = await client.query(`
+            SELECT t.id
+            FROM maintenance_tickets t
+            JOIN forklifts f ON t.forklift_id = f.id
+            WHERE t.id = $1 AND f.client_id = $2
+            LIMIT 1
+        `, [id, user.client_id]);
+        if (ownershipRes.rows.length === 0) {
+            return c.json({ error: 'Ticket not found' }, 404);
+        }
+
+        if (assigned_to) {
+            const techRes = await client.query(`
+                SELECT id
+                FROM users
+                WHERE id = $1 AND client_id = $2
+                LIMIT 1
+            `, [assigned_to, user.client_id]);
+            if (techRes.rows.length === 0) {
+                return c.json({ error: 'assigned_to user is invalid for this client' }, 400);
+            }
+        }
 
         if (assigned_to) {
             await client.query(`
@@ -320,6 +490,7 @@ app.patch('/api/tickets/:id/status', async (c) => {
 
 // PATCH /api/inventory/:id (Update Part)
 app.patch('/api/inventory/:id', async (c) => {
+    const user = c.get('user');
     const id = c.req.param('id');
     const client = getDb(c.env);
     const body = await c.req.json();
@@ -328,8 +499,18 @@ app.patch('/api/inventory/:id', async (c) => {
     try {
         await client.connect();
 
-        const fields = [];
-        const values = [];
+        const partRes = await client.query(`
+            SELECT id
+            FROM parts_inventory
+            WHERE id = $1 AND client_id = $2
+            LIMIT 1
+        `, [id, user.client_id]);
+        if (partRes.rows.length === 0) {
+            return c.json({ error: 'Part not found' }, 404);
+        }
+
+        const fields: string[] = [];
+        const values: Array<string | number> = [];
         let idx = 1;
 
         if (part_number) { fields.push(`part_number = $${idx++}`); values.push(part_number); }
@@ -341,11 +522,11 @@ app.patch('/api/inventory/:id', async (c) => {
 
         if (fields.length === 0) return c.json({ message: 'No fields to update' });
 
-        values.push(id);
+        values.push(id, user.client_id);
         const query = `
             UPDATE parts_inventory 
             SET ${fields.join(', ')} 
-            WHERE id = $${idx}
+            WHERE id = $${idx} AND client_id = $${idx + 1}
         `;
 
         await client.query(query, values);
@@ -394,6 +575,10 @@ app.post('/api/schedules', async (c) => {
 
     const { forklift_id, task_name, frequency_type, frequency_value, target_model } = body;
 
+    if (!task_name || !frequency_type || !frequency_value) {
+        return c.json({ error: 'task_name, frequency_type and frequency_value are required' }, 400);
+    }
+
     const id = crypto.randomUUID();
     let next_due_at = new Date();
     let next_due_hours = 0;
@@ -401,16 +586,42 @@ app.post('/api/schedules', async (c) => {
     try {
         await client.connect();
 
+        const onboardingGate = await ensureOnboardingPrerequisites(client, user.client_id, 'preventive_schedules');
+        if (!onboardingGate.ok) {
+            return c.json({
+                error: onboardingGate.message,
+                code: 'ONBOARDING_PREREQUISITE_MISSING',
+                missing_steps: onboardingGate.missing_steps,
+            }, 409);
+        }
+
         if (frequency_type === 'DAYS') {
             next_due_at.setDate(next_due_at.getDate() + parseInt(frequency_value));
         } else if (frequency_type === 'HOURS' && forklift_id) {
             // Fetch current hours
-            const fRes = await client.query('SELECT current_hours FROM forklifts WHERE id = $1', [forklift_id]);
+            const fRes = await client.query(`
+                SELECT current_hours
+                FROM forklifts
+                WHERE id = $1 AND client_id = $2
+            `, [forklift_id, user.client_id]);
+            if (fRes.rows.length === 0) {
+                return c.json({ error: 'Forklift not found for this client' }, 400);
+            }
             const currentHours = parseFloat(fRes.rows[0]?.current_hours || 0);
             next_due_hours = currentHours + parseFloat(frequency_value);
             // Set next_due_at to far future or null? Schema allows null? Checking schema...
             // Let's set it to today + 1 year just in case query requires it, or handle in query
             next_due_at.setFullYear(next_due_at.getFullYear() + 1);
+        } else if (forklift_id) {
+            const fRes = await client.query(`
+                SELECT id
+                FROM forklifts
+                WHERE id = $1 AND client_id = $2
+                LIMIT 1
+            `, [forklift_id, user.client_id]);
+            if (fRes.rows.length === 0) {
+                return c.json({ error: 'Forklift not found for this client' }, 400);
+            }
         }
 
         await client.query(`
@@ -428,6 +639,7 @@ app.post('/api/schedules', async (c) => {
 
 // PATCH /api/schedules/:id (Update Schedule)
 app.patch('/api/schedules/:id', async (c) => {
+    const user = c.get('user');
     const id = c.req.param('id');
     const client = getDb(c.env);
     const body = await c.req.json();
@@ -436,8 +648,30 @@ app.patch('/api/schedules/:id', async (c) => {
     try {
         await client.connect();
 
-        const fields = [];
-        const values = [];
+        const ownerRes = await client.query(`
+            SELECT id
+            FROM preventive_schedules
+            WHERE id = $1 AND client_id = $2
+            LIMIT 1
+        `, [id, user.client_id]);
+        if (ownerRes.rows.length === 0) {
+            return c.json({ error: 'Schedule not found' }, 404);
+        }
+
+        if (forklift_id) {
+            const forkliftRes = await client.query(`
+                SELECT id
+                FROM forklifts
+                WHERE id = $1 AND client_id = $2
+                LIMIT 1
+            `, [forklift_id, user.client_id]);
+            if (forkliftRes.rows.length === 0) {
+                return c.json({ error: 'Forklift not found for this client' }, 400);
+            }
+        }
+
+        const fields: string[] = [];
+        const values: Array<string | number | boolean | null> = [];
         let idx = 1;
 
         if (forklift_id !== undefined) { fields.push(`forklift_id = $${idx++}`); values.push(forklift_id || null); }
@@ -449,11 +683,11 @@ app.patch('/api/schedules/:id', async (c) => {
 
         if (fields.length === 0) return c.json({ message: 'No fields to update' });
 
-        values.push(id);
+        values.push(id, user.client_id);
         const query = `
             UPDATE preventive_schedules 
             SET ${fields.join(', ')} 
-            WHERE id = $${idx}
+            WHERE id = $${idx} AND client_id = $${idx + 1}
         `;
 
         await client.query(query, values);
@@ -604,10 +838,23 @@ app.post('/api/inventory', async (c) => {
 
 // GET /api/tickets/:id/costs
 app.get('/api/tickets/:id/costs', async (c) => {
+    const user = c.get('user');
     const ticketId = c.req.param('id');
     const client = getDb(c.env);
     try {
         await client.connect();
+
+        const ownerRes = await client.query(`
+            SELECT t.id
+            FROM maintenance_tickets t
+            JOIN forklifts f ON t.forklift_id = f.id
+            WHERE t.id = $1 AND f.client_id = $2
+            LIMIT 1
+        `, [ticketId, user.client_id]);
+        if (ownerRes.rows.length === 0) {
+            return c.json({ error: 'Ticket not found' }, 404);
+        }
+
         const res = await client.query(`
             SELECT * FROM ticket_costs
             WHERE ticket_id = $1
@@ -621,6 +868,7 @@ app.get('/api/tickets/:id/costs', async (c) => {
 
 // POST /api/tickets/:id/costs
 app.post('/api/tickets/:id/costs', async (c) => {
+    const user = c.get('user');
     const ticketId = c.req.param('id');
     const client = getDb(c.env);
     const body = await c.req.json();
@@ -630,6 +878,18 @@ app.post('/api/tickets/:id/costs', async (c) => {
 
     try {
         await client.connect();
+
+        const ownerRes = await client.query(`
+            SELECT t.id
+            FROM maintenance_tickets t
+            JOIN forklifts f ON t.forklift_id = f.id
+            WHERE t.id = $1 AND f.client_id = $2
+            LIMIT 1
+        `, [ticketId, user.client_id]);
+        if (ownerRes.rows.length === 0) {
+            return c.json({ error: 'Ticket not found' }, 404);
+        }
+
         await client.query(`
             INSERT INTO ticket_costs(id, ticket_id, cost_type, description, quantity, unit_cost, total_cost, is_billable)
             VALUES($1, $2, $3, $4, $5, $6, $7, $8)
@@ -656,12 +916,38 @@ app.post('/api/forklifts', async (c) => {
     const body = await c.req.json();
     const { internal_id, model, brand, serial_number, year, location_id, fuel_type, current_hours, image } = body;
 
+    if (!internal_id) {
+        return c.json({ error: 'internal_id is required' }, 400);
+    }
+
     const id = crypto.randomUUID();
     // Simple QR payload: URL or just ID. Let's use internal_id for readability in this MVP
     const qr_code_payload = internal_id;
 
     try {
         await client.connect();
+
+        const onboardingGate = await ensureOnboardingPrerequisites(client, user.client_id, 'forklifts');
+        if (!onboardingGate.ok) {
+            return c.json({
+                error: onboardingGate.message,
+                code: 'ONBOARDING_PREREQUISITE_MISSING',
+                missing_steps: onboardingGate.missing_steps,
+            }, 409);
+        }
+
+        if (location_id) {
+            const locationRes = await client.query(`
+                SELECT id
+                FROM client_locations
+                WHERE id = $1 AND client_id = $2
+                LIMIT 1
+            `, [location_id, user.client_id]);
+            if (locationRes.rows.length === 0) {
+                return c.json({ error: 'Location not found for this client' }, 400);
+            }
+        }
+
         await client.query(`
             INSERT INTO forklifts(id, internal_id, qr_code_payload, model, brand, serial_number, year, client_id, location_id, fuel_type, current_hours, image_url)
             VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -722,6 +1008,10 @@ app.post('/api/users', async (c) => {
     const body = await c.req.json();
     const { full_name, email, phone, password, role } = body;
 
+    if (!full_name || !email || !password || !role) {
+        return c.json({ error: 'full_name, email, password and role are required' }, 400);
+    }
+
     const id = crypto.randomUUID();
     // Simple hash for now (in prod: bcrypt)
     // We are trusting the admin input here
@@ -729,6 +1019,16 @@ app.post('/api/users', async (c) => {
 
     try {
         await client.connect();
+
+        const onboardingGate = await ensureOnboardingPrerequisites(client, user.client_id, 'users');
+        if (!onboardingGate.ok) {
+            return c.json({
+                error: onboardingGate.message,
+                code: 'ONBOARDING_PREREQUISITE_MISSING',
+                missing_steps: onboardingGate.missing_steps,
+            }, 409);
+        }
+
         await client.query(`
             INSERT INTO users(id, full_name, email, phone, password_hash, role, client_id)
             VALUES($1, $2, $3, $4, $5, $6, $7)
@@ -769,7 +1069,7 @@ app.put('/api/upload', async (c) => {
 
         return c.json({
             message: 'Upload successful',
-            url: `/ api / images / ${key}`,
+            url: `/api/images/${key}`,
             key: key
         });
 

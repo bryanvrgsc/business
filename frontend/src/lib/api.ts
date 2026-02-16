@@ -14,6 +14,7 @@ export interface Forklift {
     year?: number;
     image?: string;
     nextServiceHours?: number;
+    nextMaintenance?: string;
 }
 
 export interface ClientLocation {
@@ -21,10 +22,10 @@ export interface ClientLocation {
     name: string;
 }
 
-export async function fetchLocations(): Promise<ClientLocation[]> {
+export async function fetchLocations(clientId?: string): Promise<ClientLocation[]> {
     const token = ensureAuth();
-
-    const res = await fetch(`${API_URL}/api/client-locations`, {
+    const query = clientId ? `?client_id=${clientId}` : '';
+    const res = await fetch(`${API_URL}/api/client-locations${query}`, {
         headers: {
             'Authorization': `Bearer ${token}`
         }
@@ -32,6 +33,24 @@ export async function fetchLocations(): Promise<ClientLocation[]> {
 
     if (!res.ok) throw new Error('Failed to fetch locations');
     return res.json();
+}
+
+export async function createClientLocation(data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/client-locations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
+export async function updateClientLocation(id: string, data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/client-locations/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
 }
 
 export async function updateUser(id: string, data: any): Promise<void> {
@@ -455,4 +474,143 @@ export function logout() {
         localStorage.removeItem('user');
         window.location.href = '/login';
     }
+}
+
+// Clients
+export interface Client {
+    id: string;
+    name: string;
+    contact_email?: string;
+    phone?: string;
+    subscription_plan: string;
+    is_active: boolean;
+    created_at: string;
+}
+
+export interface OnboardingStepStatus {
+    key: string;
+    label: string;
+    completed: boolean;
+    can_create: boolean;
+    blocked_by: string[];
+    detail: string;
+}
+
+export interface OnboardingStatus {
+    client_id: string;
+    phase1_ready: boolean;
+    steps: OnboardingStepStatus[];
+}
+
+export async function fetchClients(): Promise<Client[]> {
+    const token = ensureAuth();
+    const res = await fetch(`${API_URL}/api/clients`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch clients');
+    return res.json();
+}
+
+export async function createClient(data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
+export async function updateClient(id: string, data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/clients/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
+export async function fetchOnboardingStatus(clientId?: string): Promise<OnboardingStatus> {
+    const token = ensureAuth();
+    const query = clientId ? `?client_id=${clientId}` : '';
+    const res = await fetch(`${API_URL}/api/onboarding/status${query}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch onboarding status');
+    return res.json();
+}
+
+// Contracts & SLAs
+export async function fetchContracts(clientId?: string): Promise<any[]> {
+    const token = ensureAuth();
+    const query = clientId ? `?client_id=${clientId}` : '';
+    const res = await fetch(`${API_URL}/api/contracts${query}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch contracts');
+    return res.json();
+}
+
+export async function createContract(data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/contracts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
+export async function fetchSLAs(clientId?: string): Promise<any[]> {
+    const token = ensureAuth();
+    const query = clientId ? `?client_id=${clientId}` : '';
+    const res = await fetch(`${API_URL}/api/contracts/slas${query}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch SLAs');
+    return res.json();
+}
+
+export async function createSLA(data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/contracts/slas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
+// Checklists
+export async function fetchChecklistTemplates(): Promise<any[]> {
+    const token = ensureAuth();
+    const res = await fetch(`${API_URL}/api/checklists/templates`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch templates');
+    return res.json();
+}
+
+export async function createChecklistTemplate(data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/checklists/templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
+}
+
+export async function fetchChecklistQuestions(templateId: string): Promise<any[]> {
+    const token = ensureAuth();
+    const res = await fetch(`${API_URL}/api/checklists/templates/${templateId}/questions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch questions');
+    return res.json();
+}
+
+export async function addChecklistQuestion(data: any): Promise<void> {
+    const token = ensureAuth();
+    await fetch(`${API_URL}/api/checklists/questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(data)
+    });
 }
