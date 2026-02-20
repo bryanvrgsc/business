@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchKPIs, KPIData } from '@/lib/api';
+import { KpiService } from '@/services/kpi.service';
+import { KPIData } from '@/types';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Clock, AlertTriangle, CheckCircle, DollarSign, TrendingUp, Truck } from 'lucide-react';
@@ -12,7 +13,7 @@ function AnalyticsContent() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchKPIs()
+        KpiService.getDashboardData()
             .then(setKpis)
             .catch(console.error)
             .finally(() => setLoading(false));

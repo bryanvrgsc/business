@@ -1,7 +1,9 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { createForklift, fetchLocations, ClientLocation, uploadImage, fetchForklifts, Forklift, updateForklift } from '@/lib/api';
+import { ClientService } from '@/services/client.service';
+import { ForkliftService } from '@/services/forklift.service';
+import { Forklift, ClientLocation } from '@/types';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Save, X, Truck, Camera, Edit2 } from 'lucide-react';
@@ -17,7 +19,18 @@ function ForkliftsListContent() {
     const [uploading, setUploading] = useState(false);
 
     // Form State
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        internal_id: string;
+        model: string;
+        brand: string;
+        serial_number: string;
+        fuel_type: string;
+        current_hours: number;
+        year: number;
+        location_id: string;
+        image: string;
+        status: 'OPERATIONAL' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
+    }>({
         internal_id: '',
         model: '',
         brand: '',
@@ -38,7 +51,7 @@ function ForkliftsListContent() {
     const loadForklifts = async () => {
         setLoading(true);
         try {
-            const data = await fetchForklifts();
+            const data = await ForkliftService.getAll();
             setForklifts(data);
         } catch (err) {
             console.error(err);
@@ -49,7 +62,7 @@ function ForkliftsListContent() {
 
     const loadLocations = async () => {
         try {
-            const data = await fetchLocations();
+            const data = await ClientService.getLocations();
             setLocations(data);
             if (data.length > 0 && !formData.location_id) {
                 setFormData(prev => ({ ...prev, location_id: data[0].id }));
@@ -63,7 +76,7 @@ function ForkliftsListContent() {
         if (!e.target.files || e.target.files.length === 0) return;
         setUploading(true);
         try {
-            const url = await uploadImage(e.target.files[0]);
+            const url = await ForkliftService.uploadImage(e.target.files[0]);
             setFormData(prev => ({ ...prev, image: url }));
         } catch (err) {
             alert('Error al subir imagen');
@@ -93,10 +106,10 @@ function ForkliftsListContent() {
         e.preventDefault();
         try {
             if (editingForklift) {
-                await updateForklift(editingForklift.id, formData);
+                await ForkliftService.update(editingForklift.id, formData);
                 alert('Montacargas actualizado');
             } else {
-                await createForklift(formData);
+                await ForkliftService.create(formData);
                 alert('Montacargas creado exitosamente');
             }
             setShowModal(false);
@@ -293,7 +306,7 @@ function ForkliftsListContent() {
                                     <select
                                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                         value={formData.status}
-                                        onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                        onChange={e => setFormData({ ...formData, status: e.target.value as 'OPERATIONAL' | 'MAINTENANCE' | 'OUT_OF_SERVICE' })}
                                     >
                                         <option value="OPERATIONAL">Operativo</option>
                                         <option value="MAINTENANCE">Mantenimiento</option>

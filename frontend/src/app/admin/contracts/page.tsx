@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { fetchClients, Client, fetchContracts, createContract, fetchSLAs, createSLA } from '@/lib/api';
+import { ContractService } from '@/services/contract.service';
+import { ClientService } from '@/services/client.service';
+import { Client } from '@/types';
 
 export default function ContractsPage() {
     const [clients, setClients] = useState<Client[]>([]);
@@ -25,7 +27,7 @@ export default function ContractsPage() {
 
     const loadClients = async () => {
         try {
-            const data = await fetchClients();
+            const data = await ClientService.getClients();
             setClients(data);
             if (data.length > 0) setSelectedClient(data[0].id);
         } catch (error) {
@@ -37,8 +39,8 @@ export default function ContractsPage() {
         setLoading(true);
         try {
             const [cData, sData] = await Promise.all([
-                fetchContracts(clientId),
-                fetchSLAs(clientId)
+                ContractService.getContracts(clientId),
+                ContractService.getSLAs(clientId)
             ]);
             setContracts(cData);
             setSlas(sData);
@@ -125,7 +127,7 @@ export default function ContractsPage() {
                                 <div key={sla.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
                                     <div>
                                         <span className={`text-xs font-bold px-2 py-1 rounded uppercase ${sla.priority === 'ALTA' ? 'bg-red-100 text-red-700' :
-                                                sla.priority === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
+                                            sla.priority === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
                                             }`}>
                                             {sla.priority}
                                         </span>
@@ -171,7 +173,7 @@ function ContractForm({ clientId, onSuccess, onCancel }: { clientId: string, onS
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        await createContract({ ...data, client_id: clientId });
+        await ContractService.createContract({ ...data, client_id: clientId });
         onSuccess();
     };
 
@@ -218,7 +220,7 @@ function SLAForm({ clientId, onSuccess, onCancel }: { clientId: string, onSucces
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        await createSLA({ ...data, client_id: clientId });
+        await ContractService.createSLA({ ...data, client_id: clientId });
         onSuccess();
     };
 

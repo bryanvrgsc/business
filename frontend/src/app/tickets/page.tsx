@@ -1,10 +1,13 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchTickets, updateTicketStatus, Ticket, fetchForklifts, createTicket, Forklift, fetchUsers, User, fetchTicketCosts, addTicketCost, TicketCost } from '@/lib/api';
+import { TicketService } from '@/services/ticket.service';
+import { ForkliftService } from '@/services/forklift.service';
+import { ClientService } from '@/services/client.service';
+import { Ticket, Forklift, User, TicketCost } from '@/types';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, AlertTriangle, CheckCircle, Clock, MoreVertical, Search, Filter, Plus, X, Save } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Clock, Plus, X, Save } from 'lucide-react';
 
 function TicketsListContent() {
     const router = useRouter();
@@ -23,7 +26,11 @@ function TicketsListContent() {
     const [users, setUsers] = useState<User[]>([]);
 
     // New Ticket Form State
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        forklift_id: string;
+        description: string;
+        priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    }>({
         forklift_id: '',
         description: '',
         priority: 'MEDIUM'
@@ -46,7 +53,7 @@ function TicketsListContent() {
 
     const loadForklifts = async () => {
         try {
-            const data = await fetchForklifts();
+            const data = await ForkliftService.getAll();
             setForklifts(data);
         } catch (err) {
             console.error('Failed to load forklifts');
@@ -55,7 +62,7 @@ function TicketsListContent() {
 
     const loadUsers = async () => {
         try {
-            const data = await fetchUsers();
+            const data = await ClientService.getUsers();
             // Filter only technicians or admins
             setUsers(data.filter(u => u.role === 'TECH' || u.role === 'ADMIN'));
         } catch (err) {
@@ -65,7 +72,7 @@ function TicketsListContent() {
 
     const loadTickets = async () => {
         try {
-            const data = await fetchTickets();
+            const data = await TicketService.getAll();
             setTickets(data);
         } catch (err) {
             console.error(err);
@@ -78,7 +85,7 @@ function TicketsListContent() {
         try {
             // Optimistic update
             setTickets(prev => prev.map(t => t.id === id ? { ...t, status: newStatus as any } : t));
-            await updateTicketStatus(id, newStatus);
+            await TicketService.updateStatus(id, newStatus);
         } catch (err) {
             console.error('Failed to update status', err);
             loadTickets(); // Revert on error
@@ -89,7 +96,7 @@ function TicketsListContent() {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await createTicket(formData);
+            await TicketService.create(formData);
             alert('Ticket creado exitosamente');
             setShowModal(false);
             setFormData({
@@ -99,7 +106,7 @@ function TicketsListContent() {
             });
             loadTickets();
         } catch (err) {
-            alert('Error al crear ticket');
+            alert('Error al crear ticket: ' + err);
         } finally {
             setSubmitting(false);
         }
@@ -108,7 +115,7 @@ function TicketsListContent() {
     const openCostModal = async (ticket: Ticket) => {
         setCostModal(ticket);
         try {
-            const costs = await fetchTicketCosts(ticket.id);
+            const costs = await TicketService.getCosts(ticket.id);
             setTicketCosts(costs);
         } catch (err) {
             console.error('Error fetching costs');
@@ -120,8 +127,8 @@ function TicketsListContent() {
         if (!costModal) return;
 
         try {
-            await addTicketCost(costModal.id, costData);
-            const costs = await fetchTicketCosts(costModal.id);
+            await TicketService.addCost(costModal.id, costData);
+            const costs = await TicketService.getCosts(costModal.id);
             setTicketCosts(costs);
             setCostData({
                 cost_type: 'PART',
@@ -132,7 +139,7 @@ function TicketsListContent() {
             });
             alert('Costo agregado');
         } catch (err) {
-            alert('Error al agregar costo');
+            alert('Error al agregar costo: ' + err);
         }
     };
 
@@ -141,13 +148,13 @@ function TicketsListContent() {
         if (!assignModal || !selectedTech) return;
 
         try {
-            await updateTicketStatus(assignModal.ticketId, 'IN_PROGRESS', selectedTech);
+            await TicketService.updateStatus(assignModal.ticketId, 'IN_PROGRESS', selectedTech);
             alert('Ticket asignado exitosamente');
             setAssignModal(null);
             setSelectedTech('');
             loadTickets();
         } catch (err) {
-            alert('Error al asignar ticket');
+            alert('Error al asignar ticket: ' + err);
         }
     };
 
@@ -320,7 +327,7 @@ function TicketsListContent() {
                                 <select
                                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                     value={formData.priority}
-                                    onChange={e => setFormData({ ...formData, priority: e.target.value })}
+                                    onChange={e => setFormData({ ...formData, priority: e.target.value as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' })}
                                 >
                                     <option value="LOW">Baja</option>
                                     <option value="MEDIUM">Media</option>

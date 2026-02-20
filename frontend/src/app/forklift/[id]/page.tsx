@@ -3,7 +3,8 @@ export const runtime = 'edge';
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { fetchForkliftById, Forklift } from '@/lib/api';
+import { ForkliftService } from '@/services/forklift.service';
+import { Forklift } from '@/types';
 import { CheckCircle, AlertOctagon, Wrench, ArrowLeft, ClipboardList } from 'lucide-react';
 import Link from 'next/link';
 
@@ -16,7 +17,7 @@ export default function ForkliftDetailPage() {
     useEffect(() => {
         if (id) {
             // @ts-ignore
-            fetchForkliftById(id as string).then(data => {
+            ForkliftService.getById(id as string).then(data => {
                 setForklift(data);
                 setLoading(false);
             });

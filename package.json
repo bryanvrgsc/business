@@ -1,0 +1,7 @@
+{
+  "name": "cmms-business",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"*\" run dev"
+  }
+}

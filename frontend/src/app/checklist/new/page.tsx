@@ -2,11 +2,12 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { fetchTemplate, ChecklistTemplate } from '@/lib/templates';
-import { fetchForkliftById, Forklift } from '@/lib/api';
+import { ChecklistService, ChecklistTemplate, ChecklistQuestion } from '@/services/checklist.service';
+import { ForkliftService } from '@/services/forklift.service';
+import { Forklift } from '@/types';
 import { Camera, Save, AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { db } from '@/lib/db';
-import { uploadImage } from '@/lib/api';
+
 import { motion, AnimatePresence } from 'framer-motion';
 
 function ChecklistFormContent() {
@@ -36,9 +37,14 @@ function ChecklistFormContent() {
         async function loadData() {
             if (!forkliftId) return;
             try {
+                // Determine active template, ideally from params or forklift context. 
+                // For now, we fetch the first available active global/client template.
+                const templates = await ChecklistService.getTemplates();
+                if (templates.length === 0) throw new Error('No templates available');
+
                 const [fData, tData] = await Promise.all([
-                    fetchForkliftById(forkliftId),
-                    fetchTemplate('basic-forklift')
+                    ForkliftService.getById(forkliftId),
+                    ChecklistService.getTemplateWithQuestions(templates[0].id)
                 ]);
                 setForklift(fData);
                 setTemplate(tData);
@@ -60,7 +66,7 @@ function ChecklistFormContent() {
 
         setUploadingState(prev => ({ ...prev, [questionId]: true }));
         try {
-            const imageUrl = await uploadImage(file);
+            const imageUrl = await ForkliftService.uploadImage(file);
             handleAnswerChange(questionId, imageUrl);
         } catch (error) {
             console.error('Upload failed', error);
@@ -72,9 +78,9 @@ function ChecklistFormContent() {
 
     const calculateCriticalFailure = () => {
         if (!template) return false;
-        return template.questions.some(q =>
+        return (template.questions || []).some(q =>
             q.severity === 'CRITICAL_STOP' &&
-            answers[q.id] === 'NO'
+            answers[q.id || ''] === 'NO'
         );
     };
 
@@ -82,10 +88,15 @@ function ChecklistFormContent() {
         e.preventDefault();
         if (!forklift || !template) return;
 
-        // Check if all YES_NO questions are answered
-        const allAnswered = template.questions.every(q => q.type !== 'YES_NO' || answers[q.id]);
+        // Check if all questions are answered
+        const allAnswered = template.questions?.every(q => {
+            if (q.type === 'YES_NO') return answers[q.id || ''] !== undefined;
+            if (q.requires_evidence && q.type === 'PHOTO') return answers[q.id || ''] !== undefined;
+            return true;
+        }) ?? true;
+
         if (!allAnswered) {
-            alert('Por favor responde todas las preguntas del checklist.');
+            alert('Por favor completa el checklist respondiendo YES/NO o subiendo foto requerida.');
             return;
         }
 
@@ -158,7 +169,7 @@ function ChecklistFormContent() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-                {template.questions.map((q, idx) => (
+                {(template.questions || []).map((q, idx) => (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -173,52 +184,52 @@ function ChecklistFormContent() {
                             )}
                         </div>
 
-                        {q.type === 'YES_NO' && (
+                        {q.type === 'YES_NO' && q.id && (
                             <div className="flex gap-3 mt-4">
                                 <button
                                     type="button"
-                                    onClick={() => handleAnswerChange(q.id, 'YES')}
-                                    className={`flex-1 py-4 rounded-2xl font-black text-sm transition-all interactive flex items-center justify-center gap-2 border-2 ${answers[q.id] === 'YES'
+                                    onClick={() => handleAnswerChange(q.id!, 'YES')}
+                                    className={`flex-1 py-4 rounded-2xl font-black text-sm transition-all interactive flex items-center justify-center gap-2 border-2 ${answers[q.id!] === 'YES'
                                         ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-100'
                                         : 'bg-slate-50 border-slate-50 text-slate-400'
                                         }`}
                                 >
-                                    {answers[q.id] === 'YES' && <CheckCircle2 size={18} />}
+                                    {answers[q.id!] === 'YES' && <CheckCircle2 size={18} />}
                                     BIEN
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => handleAnswerChange(q.id, 'NO')}
-                                    className={`flex-1 py-4 rounded-2xl font-black text-sm transition-all interactive flex items-center justify-center gap-2 border-2 ${answers[q.id] === 'NO'
+                                    onClick={() => handleAnswerChange(q.id!, 'NO')}
+                                    className={`flex-1 py-4 rounded-2xl font-black text-sm transition-all interactive flex items-center justify-center gap-2 border-2 ${answers[q.id!] === 'NO'
                                         ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-100'
                                         : 'bg-slate-50 border-slate-50 text-slate-400'
                                         }`}
                                 >
-                                    {answers[q.id] === 'NO' && <AlertTriangle size={18} />}
+                                    {answers[q.id!] === 'NO' && <AlertTriangle size={18} />}
                                     MAL
                                 </button>
                             </div>
                         )}
 
-                        {q.type === 'TEXT' && (
+                        {q.type === 'TEXT' && q.id && (
                             <textarea
                                 className="w-full mt-4 p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-sm font-medium focus:bg-white focus:border-primary/20 focus:ring-4 focus:ring-primary/5 outline-none transition-all placeholder:text-slate-300"
                                 rows={3}
                                 placeholder="Escribe aquí tus observaciones..."
-                                onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                                onChange={(e) => handleAnswerChange(q.id!, e.target.value)}
                             />
                         )}
 
-                        {q.type === 'NUMBER' && (
+                        {q.type === 'NUMBER' && q.id && (
                             <input
                                 type="number"
                                 className="w-full mt-4 p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-sm font-black focus:bg-white focus:border-primary/20 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
                                 placeholder="0"
-                                onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                                onChange={(e) => handleAnswerChange(q.id!, e.target.value)}
                             />
                         )}
 
-                        {(q.requiresEvidence || q.type === 'PHOTO') && (
+                        {(q.requires_evidence || q.type === 'PHOTO') && q.id && (
                             <div className="mt-4">
                                 <input
                                     type="file"
@@ -228,7 +239,7 @@ function ChecklistFormContent() {
                                     className="hidden"
                                     onChange={(e) => {
                                         if (e.target.files && e.target.files[0]) {
-                                            handleImageUpload(q.id, e.target.files[0]);
+                                            handleImageUpload(q.id!, e.target.files[0]);
                                         }
                                     }}
                                 />
@@ -244,7 +255,7 @@ function ChecklistFormContent() {
                                             <img src={answers[q.id]} alt="Evidencia" className="w-full h-48 object-cover rounded-2xl shadow-inner border border-slate-100" />
                                             <button
                                                 type="button"
-                                                onClick={() => handleAnswerChange(q.id, null)}
+                                                onClick={() => handleAnswerChange(q.id!, null)}
                                                 className="absolute top-3 right-3 bg-red-500 text-white p-2 rounded-xl shadow-lg interactive"
                                             >
                                                 <AlertTriangle size={18} />
@@ -253,13 +264,13 @@ function ChecklistFormContent() {
                                     ) : (
                                         <label
                                             htmlFor={`file-${q.id}`}
-                                            className={`flex items-center gap-3 text-sm font-black px-4 py-4 rounded-2xl transition-all w-full justify-center border-2 border-dashed interactive cursor-pointer ${uploadingState[q.id]
+                                            className={`flex items-center gap-3 text-sm font-black px-4 py-4 rounded-2xl transition-all w-full justify-center border-2 border-dashed interactive cursor-pointer ${uploadingState[q.id!]
                                                 ? 'bg-slate-50 text-slate-300 border-slate-100'
                                                 : 'bg-blue-50/50 text-primary border-blue-100 hover:bg-blue-50'
                                                 }`}
                                         >
                                             <Camera size={20} />
-                                            {uploadingState[q.id] ? 'Subiendo...' : 'Agregar Evidencia'}
+                                            {uploadingState[q.id!] ? 'Subiendo...' : 'Agregar Evidencia'}
                                         </label>
                                     )}
                                 </AnimatePresence>

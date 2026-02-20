@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "../components/Navbar";
+import { AuthProvider } from "../contexts/AuthContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -29,10 +30,12 @@ export default function RootLayout({
       <body className={`${inter.className} bg-gray-50 flex flex-col md:flex-row min-h-screen`}>
         {/* We show navbar on all pages, but conditionally handle login page in specific layouts if needed. 
               For now, simple global layout. */}
-        <Navbar />
-        <main className="flex-1 p-4 mb-20 pb-safe md:mb-0 overflow-y-auto">
-          {children}
-        </main>
+        <AuthProvider>
+          <Navbar />
+          <main className="flex-1 p-4 mb-20 pb-safe md:mb-0 overflow-y-auto">
+            {children}
+          </main>
+        </AuthProvider>
       </body>
     </html>
   );

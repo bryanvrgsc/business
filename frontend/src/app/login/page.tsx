@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { login } from '@/lib/api';
+import { AuthService } from '@/services/auth.service';
+import { useAuth } from '@/contexts/AuthContext';
 import { motion } from 'framer-motion';
 import { LogIn } from 'lucide-react';
 
@@ -12,6 +13,13 @@ export default function LoginPage() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+    const { login: setAuthContext, isAuthenticated } = useAuth();
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            router.push('/dashboard');
+        }
+    }, [isAuthenticated, router]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -19,7 +27,10 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            await login(email, password);
+            const data: any = await AuthService.login(email, password);
+            // AuthService saves to localstorage, now update context
+            const token = localStorage.getItem('token') || '';
+            setAuthContext(data, token);
             router.push('/dashboard');
         } catch (err: any) {
             setError(err.message || 'Credenciales inválidas');

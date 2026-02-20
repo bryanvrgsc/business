@@ -1,7 +1,9 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchUsers, createUser, updateUser, User } from '@/lib/api';
+// Since users are managed via ClientService in the new architecture
+import { ClientService } from '@/services/client.service';
+import { User } from '@/types';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Save, X, User as UserIcon, Shield, Edit2, Key } from 'lucide-react';
@@ -14,7 +16,13 @@ function UsersListContent() {
     const [editingUser, setEditingUser] = useState<User | null>(null);
 
     // Form State
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        full_name: string;
+        email: string;
+        phone: string;
+        password?: string;
+        role: 'OPERATOR' | 'ADMIN' | 'TECH' | 'CLIENT';
+    }>({
         full_name: '',
         email: '',
         phone: '',
@@ -28,7 +36,7 @@ function UsersListContent() {
 
     const loadUsers = async () => {
         try {
-            const data = await fetchUsers();
+            const data = await ClientService.getUsers();
             setUsers(data);
         } catch (err) {
             console.error(err);
@@ -40,14 +48,13 @@ function UsersListContent() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            const updatePayload: Partial<User> & { password?: string } = { ...formData };
+            if (!formData.password) delete updatePayload.password;
+
             if (editingUser) {
-                await updateUser(editingUser.id, {
-                    ...formData,
-                    // Don't send password if empty
-                    password: formData.password || undefined
-                });
+                await ClientService.updateUser(editingUser.id, updatePayload);
             } else {
-                await createUser(formData);
+                await ClientService.createUser(formData as any);
             }
             setShowModal(false);
             setEditingUser(null);
@@ -71,7 +78,7 @@ function UsersListContent() {
             email: user.email,
             phone: user.phone || '',
             password: '', // Keep empty
-            role: user.role
+            role: user.role as 'OPERATOR' | 'ADMIN' | 'TECH' | 'CLIENT'
         });
         setShowModal(true);
     };
@@ -79,7 +86,7 @@ function UsersListContent() {
     const handleToggleActive = async (user: User) => {
         if (!confirm(`¿${user.is_active ? 'Desactivar' : 'Activar'} usuario ${user.full_name}?`)) return;
         try {
-            await updateUser(user.id, { is_active: !user.is_active });
+            await ClientService.updateUser(user.id, { is_active: !user.is_active });
             loadUsers();
         } catch (err) {
             alert('Error al actualizar estado');
@@ -237,7 +244,7 @@ function UsersListContent() {
                                 <select
                                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                     value={formData.role}
-                                    onChange={e => setFormData({ ...formData, role: e.target.value })}
+                                    onChange={e => setFormData({ ...formData, role: e.target.value as 'OPERATOR' | 'ADMIN' | 'TECH' | 'CLIENT' })}
                                 >
                                     <option value="OPERATOR">Operador</option>
                                     <option value="TECH">Técnico</option>

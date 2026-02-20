@@ -1,13 +1,9 @@
-import { db, LocalReport } from './db';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { db } from './db';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787';
 
 export async function syncReports() {
-    const pendingReports = await db.reports.where('syncedAt').equals('').toArray();
-    // Also check for undefined/null if dexie defaults aren't perfect, 
-    // but we defined syncedAt as string. 
-    // Filter manually to be safe for now or use filter()
-
     const unsynced = await db.reports.filter(r => !r.syncedAt).toArray();
 
     if (unsynced.length === 0) return { synced: 0, errors: 0 };

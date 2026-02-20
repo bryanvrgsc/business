@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Client, fetchClients, createClient } from '@/lib/api';
+import { ClientService } from '@/services/client.service';
+import { Client } from '@/types';
 
 export default function ClientsPage() {
     const [clients, setClients] = useState<Client[]>([]);
@@ -22,7 +23,7 @@ export default function ClientsPage() {
     const loadClients = async () => {
         setLoading(true);
         try {
-            const data = await fetchClients();
+            const data = await ClientService.getClients();
             setClients(data);
         } catch (error) {
             console.error(error);
@@ -34,7 +35,7 @@ export default function ClientsPage() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await createClient(newClient);
+            await ClientService.createClient(newClient);
             setIsModalOpen(false);
             setNewClient({
                 name: '',

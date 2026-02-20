@@ -1,7 +1,9 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchSchedules, createSchedule, updateSchedule, fetchForklifts, Schedule, Forklift } from '@/lib/api';
+import { ScheduleService } from '@/services/schedule.service';
+import { ForkliftService } from '@/services/forklift.service';
+import { Schedule, Forklift } from '@/types';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Save, X, CalendarClock, Clock, AlertCircle, CheckCircle } from 'lucide-react';
@@ -16,7 +18,13 @@ function SchedulesListContent() {
     // Form State
     const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
 
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        forklift_id: string;
+        task_name: string;
+        frequency_type: 'DAYS' | 'HOURS';
+        frequency_value: number;
+        target_model: string;
+    }>({
         forklift_id: '',
         task_name: '',
         frequency_type: 'DAYS',
@@ -30,8 +38,8 @@ function SchedulesListContent() {
         setLoading(true);
         try {
             const [schedulesData, forkliftsData] = await Promise.all([
-                fetchSchedules(),
-                fetchForklifts()
+                ScheduleService.getAll(),
+                ForkliftService.getAll()
             ]);
             setSchedules(schedulesData);
             setForklifts(forkliftsData);
@@ -59,7 +67,7 @@ function SchedulesListContent() {
         if (!confirm(`¿${schedule.is_active ? 'Desactivar' : 'Activar'} este programa?`)) return;
 
         try {
-            await updateSchedule(schedule.id, { is_active: !schedule.is_active });
+            await ScheduleService.update(schedule.id, { is_active: !schedule.is_active });
             loadData();
         } catch (err) {
             alert('Error al actualizar estado');
@@ -70,10 +78,10 @@ function SchedulesListContent() {
         e.preventDefault();
         try {
             if (editingSchedule) {
-                await updateSchedule(editingSchedule.id, formData);
+                await ScheduleService.update(editingSchedule.id, formData);
                 alert('Programa actualizado');
             } else {
-                await createSchedule(formData);
+                await ScheduleService.create(formData);
                 alert('Programa creado exitosamente');
             }
             setShowModal(false);
@@ -221,7 +229,7 @@ function SchedulesListContent() {
                                     <select
                                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
                                         value={formData.frequency_type}
-                                        onChange={e => setFormData({ ...formData, frequency_type: e.target.value })}
+                                        onChange={e => setFormData({ ...formData, frequency_type: e.target.value as 'DAYS' | 'HOURS' })}
                                     >
                                         <option value="DAYS">Días</option>
                                         <option value="HOURS">Horas de Uso</option>

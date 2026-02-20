@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useRouter } from 'next/navigation';
-import { fetchForkliftByQR } from '@/lib/api';
-import { Loader2, AlertTriangle, ArrowLeft, QrCode } from 'lucide-react';
+import { ForkliftService } from '@/services/forklift.service';
+import { Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function ScanPage() {
@@ -12,7 +12,7 @@ export default function ScanPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const handleScan = async (detectedCodes: any[]) => {
+    const handleScan = async (detectedCodes: { rawValue: string }[]) => {
         if (loading || detectedCodes.length === 0) return;
 
         const code = detectedCodes[0].rawValue;
@@ -20,14 +20,14 @@ export default function ScanPage() {
         setError('');
 
         try {
-            const forklift = await fetchForkliftByQR(code);
+            const forklift = await ForkliftService.getByQR(code);
             if (forklift) {
                 router.push(`/forklift/${forklift.id}`);
             } else {
                 setError(`Equipo no encontrado: ${code}`);
                 setLoading(false);
             }
-        } catch (err) {
+        } catch {
             setError('Error al consultar el equipo');
             setLoading(false);
         }

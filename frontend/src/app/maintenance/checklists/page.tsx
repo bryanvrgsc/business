@@ -1,12 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { fetchChecklistTemplates, createChecklistTemplate, fetchChecklistQuestions, addChecklistQuestion } from '@/lib/api';
+import { ChecklistService, ChecklistTemplate, ChecklistQuestion } from '@/services/checklist.service';
 
 export default function ChecklistsPage() {
-    const [templates, setTemplates] = useState<any[]>([]);
-    const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
-    const [questions, setQuestions] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
+    const [selectedTemplate, setSelectedTemplate] = useState<ChecklistTemplate | null>(null);
+    const [questions, setQuestions] = useState<ChecklistQuestion[]>([]);
 
     // UI State
     const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
@@ -25,27 +24,30 @@ export default function ChecklistsPage() {
     }, [selectedTemplate]);
 
     const loadTemplates = async () => {
-        setLoading(true); // Only initial load
         try {
-            const data = await fetchChecklistTemplates();
+            const data = await ChecklistService.getTemplates();
             setTemplates(data);
             if (data.length > 0 && !selectedTemplate) {
                 setSelectedTemplate(data[0]);
             }
-        } finally {
-            setLoading(false);
+        } catch (error) {
+            console.error(error);
         }
     };
 
     const loadQuestions = async (id: string) => {
-        const data = await fetchChecklistQuestions(id);
-        setQuestions(data);
+        try {
+            const data = await ChecklistService.getTemplateWithQuestions(id);
+            setQuestions(data.questions || []);
+        } catch (error) {
+            console.error(error);
+        }
     };
 
     const handleCreateTemplate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await createChecklistTemplate({ name: newTemplateName });
+            await ChecklistService.createTemplate({ name: newTemplateName });
             setNewTemplateName('');
             setIsCreatingTemplate(false);
             loadTemplates();
@@ -138,10 +140,20 @@ function QuestionsList({ questions, templateId, onUpdate }: { questions: any[], 
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
-        await addChecklistQuestion({ ...newQuestion, template_id: templateId });
-        setIsAdding(false);
-        setNewQuestion({ ...newQuestion, question_text: '' }); // Reset text but keep others defaults potentially
-        onUpdate();
+        try {
+            await ChecklistService.addQuestion(templateId, {
+                text: newQuestion.question_text,
+                type: newQuestion.question_type as any,
+                severity: newQuestion.severity_level as any,
+                requires_evidence: false,
+                order_index: newQuestion.order_index
+            });
+            setIsAdding(false);
+            setNewQuestion({ ...newQuestion, question_text: '' });
+            onUpdate();
+        } catch (error) {
+            console.error(error);
+        }
     };
 
     return (

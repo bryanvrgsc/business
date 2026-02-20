@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ClientLocation, fetchLocations, createClientLocation, fetchClients, Client } from '@/lib/api';
+import { ClientService } from '@/services/client.service';
+import { Client, ClientLocation } from '@/types';
 
 export default function LocationsPage() {
     const [locations, setLocations] = useState<ClientLocation[]>([]);
@@ -25,12 +26,12 @@ export default function LocationsPage() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const locs = await fetchLocations();
+            const locs = await ClientService.getLocations();
             setLocations(locs);
 
             // If we can fetch clients, we are admin-ish
             try {
-                const cls = await fetchClients();
+                const cls = await ClientService.getClients();
                 setClients(cls);
                 setIsAdmin(true);
                 if (cls.length > 0) setNewLocation(prev => ({ ...prev, client_id: cls[0].id }));
@@ -49,7 +50,7 @@ export default function LocationsPage() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await createClientLocation(newLocation);
+            await ClientService.createLocation(newLocation);
             setIsModalOpen(false);
             setNewLocation(prev => ({ ...prev, name: '', address: '' }));
             loadData();

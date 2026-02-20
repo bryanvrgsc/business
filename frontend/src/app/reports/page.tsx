@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchReports, Report } from '@/lib/api';
+import { ReportService } from '@/services/report.service';
+import { Report } from '@/types';
 import { Calendar, User, Truck, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -12,7 +13,7 @@ export default function ReportsPage() {
     useEffect(() => {
         async function load() {
             try {
-                const data = await fetchReports();
+                const data = await ReportService.getAll();
                 setReports(data);
             } catch (err) {
                 console.error(err);

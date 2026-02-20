@@ -2,27 +2,29 @@
 
 import Link from 'next/link';
 import { Home, QrCode, Settings, LogOut, FileText } from 'lucide-react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { useAuth } from '../contexts/AuthContext';
+import RoleGuard from './guards/RoleGuard';
 
 export default function Navbar() {
-    const router = useRouter();
+    const { isAuthenticated, logout, isLoading } = useAuth();
     const pathname = usePathname();
 
-    // Do not show navbar on login page
-    if (pathname === '/login') return null;
+    // Do not show navbar on login page or while loading auth state
+    if (pathname === '/login' || isLoading || !isAuthenticated) return null;
 
     const handleLogout = () => {
-        localStorage.removeItem('token');
-        router.push('/login');
+        logout();
     };
 
     const navItems = [
         { href: '/dashboard', icon: Home, label: 'Inicio', active: pathname === '/dashboard' },
         { href: '/reports', icon: FileText, label: 'Historial', active: pathname === '/reports' },
         { href: '/scan', icon: QrCode, label: 'Scanner', active: pathname === '/scan', floating: true },
-        { href: '/admin/users', icon: Settings, label: 'Admin', active: pathname.startsWith('/admin') },
         { href: '/analytics', icon: Settings, label: 'Kpis', active: pathname === '/analytics', hideOnMobile: true },
     ];
+
+    const adminItem = { href: '/admin/users', icon: Settings, label: 'Admin', active: pathname.startsWith('/admin') };
 
     return (
         <nav className="fixed bottom-0 left-0 w-full bg-white/80 backdrop-blur-md border-t border-slate-200 z-50 pb-safe md:fixed md:top-0 md:left-0 md:h-screen md:w-64 md:border-r md:border-t-0 md:flex md:flex-col">
@@ -50,6 +52,18 @@ export default function Navbar() {
                             </span>
                         </Link>
                     ))}
+
+                    <RoleGuard allowedRoles={['ADMIN', 'TECNICO']}>
+                        <Link
+                            href={adminItem.href}
+                            className={`flex flex-col items-center justify-center w-full md:w-auto md:flex-row md:justify-start md:space-x-3 p-1 rounded-xl transition-all interactive ${adminItem.active ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            <adminItem.icon size={24} className={adminItem.active ? 'scale-110 transition-transform' : ''} />
+                            <span className={`text-[10px] font-bold mt-1 md:mt-0 md:text-sm ${adminItem.active ? 'opacity-100' : 'opacity-70'}`}>
+                                {adminItem.label}
+                            </span>
+                        </Link>
+                    </RoleGuard>
 
                     <button onClick={handleLogout} className="flex flex-col items-center justify-center w-full md:w-auto md:flex-row md:justify-start md:space-x-3 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all interactive md:mt-auto">
                         <LogOut size={24} />

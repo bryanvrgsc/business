@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { fetchInventory, createPart, updatePart, Part } from '@/lib/api';
+import { InventoryService } from '@/services/inventory.service';
+import { Part } from '@/types';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Save, X, Package, AlertTriangle } from 'lucide-react';
@@ -27,7 +28,7 @@ function InventoryContent() {
     const loadParts = async () => {
         setLoading(true);
         try {
-            const data = await fetchInventory();
+            const data = await InventoryService.getAll();
             setParts(data);
         } catch (err) {
             console.error(err);
@@ -53,10 +54,10 @@ function InventoryContent() {
         e.preventDefault();
         try {
             if (editingPart) {
-                await updatePart(editingPart.id, formData);
+                await InventoryService.update(editingPart.id, formData);
                 alert('Refacción actualizada');
             } else {
-                await createPart(formData);
+                await InventoryService.create(formData);
                 alert('Refacción creada');
             }
             setShowModal(false);
