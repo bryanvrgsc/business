@@ -7,6 +7,7 @@ import { syncReports } from '@/lib/sync';
 import { RefreshCw, CheckCircle, AlertTriangle, Clock, QrCode, FileText, ChevronRight, Users, Truck, Package, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import RoleGuard from '@/components/guards/RoleGuard';
 
 export default function DashboardPage() {
     const [isOnline, setIsOnline] = useState(true);
@@ -124,17 +125,20 @@ export default function DashboardPage() {
 
             {/* Main Navigation Grid */}
             <div className="grid grid-cols-2 gap-4 mb-10">
-                <motion.div variants={itemVariants}>
-                    <Link href="/scan" className="premium-card p-6 flex flex-col items-center justify-center gap-4 group interactive text-center h-full">
-                        <div className="bg-blue-50 text-blue-600 p-4 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                            <QrCode size={28} />
-                        </div>
-                        <div>
-                            <span className="block font-black text-slate-900">Escanear QR</span>
-                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Nueva Inspección</span>
-                        </div>
-                    </Link>
-                </motion.div>
+                <RoleGuard allowedRoles={['OPERADOR', 'TECNICO', 'ADMIN']}>
+                    <motion.div variants={itemVariants}>
+                        <Link href="/scan" className="premium-card p-6 flex flex-col items-center justify-center gap-4 group interactive text-center h-full">
+                            <div className="bg-blue-50 text-blue-600 p-4 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                <QrCode size={28} />
+                            </div>
+                            <div>
+                                <span className="block font-black text-slate-900">Escanear QR</span>
+                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Nueva Inspección</span>
+                            </div>
+                        </Link>
+                    </motion.div>
+                </RoleGuard>
+
                 <motion.div variants={itemVariants}>
                     <Link href="/reports" className="premium-card p-6 flex flex-col items-center justify-center gap-4 group interactive text-center h-full">
                         <div className="bg-indigo-50 text-indigo-600 p-4 rounded-2xl group-hover:scale-110 transition-transform duration-300">
@@ -146,81 +150,97 @@ export default function DashboardPage() {
                         </div>
                     </Link>
                 </motion.div>
-                <motion.div variants={itemVariants} className="col-span-2">
-                    <Link href="/tickets" className="premium-card p-4 flex items-center justify-between gap-4 group interactive">
-                        <div className="flex items-center gap-4">
-                            <div className="bg-orange-50 text-orange-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                                <AlertTriangle size={24} />
-                            </div>
-                            <div className="text-left">
-                                <span className="block font-black text-slate-900">Tickets de Mantenimiento</span>
-                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Gestión de incidencias</span>
-                            </div>
-                        </div>
-                        <div className="bg-slate-50 p-2 rounded-xl text-slate-400 group-hover:bg-orange-50 group-hover:text-orange-600 transition-colors">
-                            <ChevronRight size={20} />
-                        </div>
-                    </Link>
-                </motion.div>
 
-                <motion.div variants={itemVariants} className="col-span-2">
-                    <Link href="/maintenance/preventive" className="premium-card p-4 flex items-center justify-between gap-4 group interactive">
-                        <div className="flex items-center gap-4">
-                            <div className="bg-emerald-50 text-emerald-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                                <Clock size={24} />
+                <RoleGuard allowedRoles={['TECNICO', 'ADMIN', 'CLIENTE']}>
+                    <motion.div variants={itemVariants} className="col-span-2">
+                        <Link href="/tickets" className="premium-card p-4 flex items-center justify-between gap-4 group interactive">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-orange-50 text-orange-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                    <AlertTriangle size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <span className="block font-black text-slate-900">Tickets de Mantenimiento</span>
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Gestión de incidencias</span>
+                                </div>
                             </div>
-                            <div className="text-left">
-                                <span className="block font-black text-slate-900">Mantenimiento Preventivo</span>
-                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Programar tareas</span>
+                            <div className="bg-slate-50 p-2 rounded-xl text-slate-400 group-hover:bg-orange-50 group-hover:text-orange-600 transition-colors">
+                                <ChevronRight size={20} />
                             </div>
-                        </div>
-                        <div className="bg-slate-50 p-2 rounded-xl text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors">
-                            <ChevronRight size={20} />
-                        </div>
-                    </Link>
-                </motion.div>
+                        </Link>
+                    </motion.div>
+                </RoleGuard>
+
+                <RoleGuard allowedRoles={['ADMIN', 'CLIENTE']}>
+                    <motion.div variants={itemVariants} className="col-span-2">
+                        <Link href="/maintenance/preventive" className="premium-card p-4 flex items-center justify-between gap-4 group interactive">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-emerald-50 text-emerald-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                    <Clock size={24} />
+                                </div>
+                                <div className="text-left">
+                                    <span className="block font-black text-slate-900">Mantenimiento Preventivo</span>
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Programar tareas</span>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 p-2 rounded-xl text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors">
+                                <ChevronRight size={20} />
+                            </div>
+                        </Link>
+                    </motion.div>
+                </RoleGuard>
 
                 <div className="col-span-2 grid grid-cols-2 gap-4">
-                    <motion.div variants={itemVariants}>
-                        <Link href="/admin/users" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
-                            <div className="bg-purple-50 text-purple-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                                <Users size={24} />
-                            </div>
-                            <div>
-                                <span className="block font-bold text-sm text-slate-900">Usuarios</span>
-                            </div>
-                        </Link>
-                    </motion.div>
-                    <motion.div variants={itemVariants}>
-                        <Link href="/admin/forklifts" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
-                            <div className="bg-pink-50 text-pink-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                                <Truck size={24} />
-                            </div>
-                            <div>
-                                <span className="block font-bold text-sm text-slate-900">Montacargas</span>
-                            </div>
-                        </Link>
-                    </motion.div>
-                    <motion.div variants={itemVariants}>
-                        <Link href="/admin/inventory" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
-                            <div className="bg-amber-50 text-amber-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                                <Package size={24} />
-                            </div>
-                            <div>
-                                <span className="block font-bold text-sm text-slate-900">Inventario</span>
-                            </div>
-                        </Link>
-                    </motion.div>
-                    <motion.div variants={itemVariants}>
-                        <Link href="/analytics" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
-                            <div className="bg-cyan-50 text-cyan-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-                                <BarChart3 size={24} />
-                            </div>
-                            <div>
-                                <span className="block font-bold text-sm text-slate-900">Analytics</span>
-                            </div>
-                        </Link>
-                    </motion.div>
+                    <RoleGuard allowedRoles={['ADMIN']}>
+                        <motion.div variants={itemVariants}>
+                            <Link href="/admin/users" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
+                                <div className="bg-purple-50 text-purple-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                    <Users size={24} />
+                                </div>
+                                <div>
+                                    <span className="block font-bold text-sm text-slate-900">Usuarios Config</span>
+                                </div>
+                            </Link>
+                        </motion.div>
+                    </RoleGuard>
+
+                    <RoleGuard allowedRoles={['ADMIN', 'CLIENTE']}>
+                        <motion.div variants={itemVariants}>
+                            <Link href="/admin/forklifts" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
+                                <div className="bg-pink-50 text-pink-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                    <Truck size={24} />
+                                </div>
+                                <div>
+                                    <span className="block font-bold text-sm text-slate-900">Activos</span>
+                                </div>
+                            </Link>
+                        </motion.div>
+                    </RoleGuard>
+
+                    <RoleGuard allowedRoles={['ADMIN', 'TECNICO']}>
+                        <motion.div variants={itemVariants}>
+                            <Link href="/admin/inventory" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
+                                <div className="bg-amber-50 text-amber-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                    <Package size={24} />
+                                </div>
+                                <div>
+                                    <span className="block font-bold text-sm text-slate-900">Inventario</span>
+                                </div>
+                            </Link>
+                        </motion.div>
+                    </RoleGuard>
+
+                    <RoleGuard allowedRoles={['ADMIN', 'CLIENTE']}>
+                        <motion.div variants={itemVariants}>
+                            <Link href="/analytics" className="premium-card p-4 flex flex-col items-center justify-center gap-2 group interactive text-center h-full">
+                                <div className="bg-cyan-50 text-cyan-600 p-3 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                                    <BarChart3 size={24} />
+                                </div>
+                                <div>
+                                    <span className="block font-bold text-sm text-slate-900">Analytics</span>
+                                </div>
+                            </Link>
+                        </motion.div>
+                    </RoleGuard>
                 </div>
             </div>
 
