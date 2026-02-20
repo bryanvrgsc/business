@@ -22,18 +22,6 @@ export class ApiClient {
     }
 
     private static async handleResponse<T>(response: Response): Promise<T> {
-        if (response.status === 401) {
-            if (typeof window !== 'undefined') {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                // Use a soft redirect or window.location based on setup.
-                // We let the frontend AuthGuard handle it by invalidating context,
-                // but as a fallback:
-                window.location.href = '/login';
-            }
-            throw new Error('Not authenticated or session expired');
-        }
-
         if (!response.ok) {
             let errorMessage = 'An error occurred';
             try {
@@ -43,6 +31,20 @@ export class ApiClient {
                 // If it's not JSON, fallback to status text
                 errorMessage = response.statusText;
             }
+
+            if (response.status === 401) {
+                if (typeof window !== 'undefined') {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    // Only redirect if not already on login page
+                    if (window.location.pathname !== '/login') {
+                        window.location.href = '/login';
+                    }
+                }
+                // We throw the specific message so Login page can show it
+                throw new Error(errorMessage || 'Not authenticated or session expired');
+            }
+
             throw new Error(errorMessage);
         }
 
